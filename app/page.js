@@ -29,7 +29,7 @@ export default function Home() {
           Drach<span style={{ color: "#c9a84c" }}>m</span>a
         </div>
         <div style={{ display: "flex", gap: "36px", alignItems: "center" }}>
-          {["Features", "Pricing", "For HQ", "Login"].map(item => (
+          {["Features", "Pricing", "Multi-Chapter", "Login"].map(item => (
             <a key={item} href="#" style={{
               color: "rgba(255,255,255,0.6)",
               textDecoration: "none",
