@@ -1,19 +1,20 @@
 "use client";
 import { useState } from "react";
+import Sidebar from "../components/Sidebar";
 
 const navItems = [
   { section: "Overview" },
-  { icon: "⬡", label: "Dashboard", active: true },
-  { icon: "📊", label: "Budget" },
-  { icon: "↕", label: "Transactions" },
+  { icon: "⬡", label: "Dashboard", href: "/dashboard", active: true },
+  { icon: "📊", label: "Budget", href: "/budget" },
+  { icon: "↕", label: "Transactions", href: "/transactions" },
   { section: "Chapter" },
-  { icon: "👥", label: "Members & Dues", badge: 5 },
-  { icon: "📅", label: "Events" },
-  { icon: "🧾", label: "Receipt Scanner" },
-  { icon: "📄", label: "Reports" },
+  { icon: "👥", label: "Members & Dues", href: "/members", badge: 5 },
+  { icon: "📅", label: "Events", href: "#" },
+  { icon: "🧾", label: "Receipt Scanner", href: "#" },
+  { icon: "📄", label: "Reports", href: "#" },
   { section: "Access" },
-  { icon: "🏛️", label: "Advisor Portal" },
-  { icon: "⚙", label: "Settings" },
+  { icon: "🏛️", label: "Advisor Portal", href: "#" },
+  { icon: "⚙", label: "Settings", href: "#" },
 ];
 
 const budgetCategories = [
@@ -49,13 +50,13 @@ const semesters = [
 ];
 
 const pillStyle = {
-  paid: { background: "#e8f5ee", color: "#1a7a52" },
+  paid:    { background: "#e8f5ee", color: "#1a7a52" },
   pending: { background: "#fdf8ee", color: "#8b6914" },
   overdue: { background: "#fde8e8", color: "#c03c3c" },
 };
 
 export default function Dashboard() {
-  const [semesterOpen, setSemesterOpen] = useState(false);
+  const [semesterOpen, setSemesterOpen]       = useState(false);
   const [selectedSemester, setSelectedSemester] = useState("Spring 2025");
 
   return (
@@ -69,139 +70,26 @@ export default function Dashboard() {
     }}>
 
       {/* SIDEBAR */}
-      <aside style={{
-        background: "#0d1b2a",
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        overflow: "hidden",
-      }}>
-        {/* Logo */}
-        <div style={{
-          padding: "28px 24px 24px",
-          fontFamily: "Georgia, serif",
-          fontSize: "24px",
-          fontWeight: "500",
-          color: "#fff",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-          letterSpacing: "0.03em",
-        }}>
-          Drach<span style={{ color: "#c9a84c" }}>m</span>a
-        </div>
-
-        {/* Chapter */}
-        <div style={{
-          padding: "14px 24px",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-        }}>
-          <div style={{ fontSize: "13px", fontWeight: "600", color: "#fff" }}>ΠΚΑ — Alpha Epsilon</div>
-          <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", marginTop: "2px" }}>University of Idaho</div>
-        </div>
-
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: "12px 0", overflowY: "auto" }}>
-          {navItems.map((item, i) => {
-            if (item.section) return (
-              <div key={i} style={{
-                fontSize: "10px", fontWeight: "600", letterSpacing: "0.12em",
-                textTransform: "uppercase", color: "rgba(255,255,255,0.25)",
-                padding: "16px 24px 6px",
-              }}>{item.section}</div>
-            );
-            return (
-              <div key={i} style={{
-                display: "flex", alignItems: "center", gap: "10px",
-                padding: "10px 12px 10px 20px",
-                margin: "1px 8px", borderRadius: "8px", cursor: "pointer",
-                background: item.active ? "rgba(201,168,76,0.12)" : "transparent",
-                color: item.active ? "#e2c47a" : "rgba(255,255,255,0.5)",
-                fontSize: "13px", fontWeight: item.active ? "500" : "400",
-              }}>
-                <span style={{ fontSize: "15px", width: "20px", textAlign: "center" }}>{item.icon}</span>
-                {item.label}
-                {item.badge && (
-                  <span style={{
-                    marginLeft: "auto", background: "#e05c5c", color: "#fff",
-                    fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "100px",
-                  }}>{item.badge}</span>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* User */}
-        <div style={{ padding: "12px 8px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: "10px",
-            padding: "10px 12px", borderRadius: "8px", cursor: "pointer",
-          }}>
-            <div style={{
-              width: "32px", height: "32px", borderRadius: "50%",
-              background: "linear-gradient(135deg, #c9a84c, #8b6914)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "12px", fontWeight: "700", color: "#0d1b2a", flexShrink: 0,
-            }}>MJ</div>
-            <div>
-              <div style={{ fontSize: "12px", fontWeight: "500", color: "#fff" }}>Marcus Johnson</div>
-              <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", marginTop: "1px" }}>Treasurer · Chapter Plan</div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <Sidebar activePage="dashboard" />
 
       {/* MAIN */}
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
 
         {/* TOPBAR */}
-        <div style={{
-          background: "#fff", borderBottom: "1px solid #dce3eb",
-          padding: "0 28px", height: "60px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          flexShrink: 0, position: "relative",
-        }}>
+        <div style={{ background: "#fff", borderBottom: "1px solid #dce3eb", padding: "0 28px", height: "60px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, position: "relative" }}>
           <div>
             <div style={{ fontSize: "16px", fontWeight: "600", color: "#0d1b2a" }}>Dashboard</div>
             <div style={{ fontSize: "12px", color: "#8a97a8", marginTop: "1px" }}>Good morning, Marcus — {selectedSemester}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", position: "relative" }}>
-
-            {/* Semester Button */}
-            <div
-              onClick={() => setSemesterOpen(!semesterOpen)}
-              style={{
-                background: "#fdf8ee", border: "1px solid rgba(201,168,76,0.3)",
-                color: "#8b6914", fontSize: "12px", fontWeight: "500",
-                padding: "6px 14px", borderRadius: "100px", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: "6px",
-              }}
-            >
+            <div onClick={() => setSemesterOpen(!semesterOpen)} style={{ background: "#fdf8ee", border: "1px solid rgba(201,168,76,0.3)", color: "#8b6914", fontSize: "12px", fontWeight: "500", padding: "6px 14px", borderRadius: "100px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
               ✦ {selectedSemester} <span style={{ fontSize: "10px" }}>{semesterOpen ? "▴" : "▾"}</span>
             </div>
-
-            {/* Semester Dropdown */}
             {semesterOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 8px)", right: "120px",
-                background: "#fff", border: "1px solid #dce3eb",
-                borderRadius: "12px", boxShadow: "0 8px 30px rgba(13,27,42,0.12)",
-                width: "240px", zIndex: 200, overflow: "hidden",
-              }}>
-                <div style={{
-                  padding: "12px 16px", fontSize: "10px", fontWeight: "600",
-                  letterSpacing: "0.1em", textTransform: "uppercase",
-                  color: "#8a97a8", borderBottom: "1px solid #dce3eb",
-                }}>Semester History</div>
+              <div style={{ position: "absolute", top: "calc(100% + 8px)", right: "120px", background: "#fff", border: "1px solid #dce3eb", borderRadius: "12px", boxShadow: "0 8px 30px rgba(13,27,42,0.12)", width: "240px", zIndex: 200, overflow: "hidden" }}>
+                <div style={{ padding: "12px 16px", fontSize: "10px", fontWeight: "600", letterSpacing: "0.1em", textTransform: "uppercase", color: "#8a97a8", borderBottom: "1px solid #dce3eb" }}>Semester History</div>
                 {semesters.map((s, i) => (
-                  <div key={i}
-                    onClick={() => { setSelectedSemester(s.label); setSemesterOpen(false); }}
-                    style={{
-                      padding: "11px 16px", display: "flex", alignItems: "center",
-                      justifyContent: "space-between", cursor: "pointer",
-                      background: s.current ? "#fdf8ee" : "transparent",
-                      fontSize: "13px",
-                    }}
-                  >
+                  <div key={i} onClick={() => { setSelectedSemester(s.label); setSemesterOpen(false); }} style={{ padding: "11px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", background: s.current ? "#fdf8ee" : "transparent", fontSize: "13px" }}>
                     <div>
                       <div style={{ fontWeight: "500", color: s.current ? "#8b6914" : "#0d1b2a" }}>{s.label}</div>
                       <div style={{ fontSize: "11px", color: "#8a97a8", marginTop: "2px" }}>{s.meta}</div>
@@ -214,12 +102,7 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
-
-            <button style={{
-              background: "#0d1b2a", color: "#fff", border: "none",
-              padding: "8px 16px", borderRadius: "7px", fontSize: "13px",
-              fontWeight: "500", cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-            }}>+ Add Transaction</button>
+            <button style={{ background: "#0d1b2a", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "7px", fontSize: "13px", fontWeight: "500", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>+ Add Transaction</button>
           </div>
         </div>
 
@@ -227,18 +110,10 @@ export default function Dashboard() {
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 28px" }}>
 
           {/* ONBOARDING BANNER */}
-          <div style={{
-            background: "linear-gradient(135deg, #0d1b2a, #1e3248)",
-            borderRadius: "12px", padding: "18px 24px",
-            marginBottom: "18px", display: "flex", alignItems: "center", gap: "20px",
-          }}>
+          <div style={{ background: "linear-gradient(135deg, #0d1b2a, #1e3248)", borderRadius: "12px", padding: "18px 24px", marginBottom: "18px", display: "flex", alignItems: "center", gap: "20px" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "14px", fontWeight: "600", color: "#fff", marginBottom: "3px" }}>
-                Welcome to Drachma — Let's get your chapter set up 👋
-              </div>
-              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
-                Complete these steps to unlock the full Drachma experience
-              </div>
+              <div style={{ fontSize: "14px", fontWeight: "600", color: "#fff", marginBottom: "3px" }}>Welcome to Drachma — Let's get your chapter set up 👋</div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>Complete these steps to unlock the full Drachma experience</div>
             </div>
             <div style={{ display: "flex", gap: "8px" }}>
               {[
@@ -247,14 +122,7 @@ export default function Dashboard() {
                 { label: "First transaction", done: false },
                 { label: "Invite advisor", done: false },
               ].map((step, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "center", gap: "6px",
-                  background: step.done ? "rgba(46,204,138,0.15)" : "rgba(255,255,255,0.07)",
-                  border: `1px solid ${step.done ? "rgba(46,204,138,0.3)" : "rgba(255,255,255,0.1)"}`,
-                  padding: "6px 12px", borderRadius: "100px",
-                  fontSize: "11px", color: step.done ? "#2ecc8a" : "rgba(255,255,255,0.55)",
-                  whiteSpace: "nowrap",
-                }}>
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", background: step.done ? "rgba(46,204,138,0.15)" : "rgba(255,255,255,0.07)", border: `1px solid ${step.done ? "rgba(46,204,138,0.3)" : "rgba(255,255,255,0.1)"}`, padding: "6px 12px", borderRadius: "100px", fontSize: "11px", color: step.done ? "#2ecc8a" : "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>
                   {step.done ? "✓" : "○"} {step.label}
                 </div>
               ))}
@@ -262,30 +130,21 @@ export default function Dashboard() {
             <div style={{ position: "relative", width: "52px", height: "52px", flexShrink: 0 }}>
               <svg width="52" height="52" viewBox="0 0 52 52" style={{ transform: "rotate(-90deg)" }}>
                 <circle cx="26" cy="26" r="20" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4"/>
-                <circle cx="26" cy="26" r="20" fill="none" stroke="#c9a84c" strokeWidth="4"
-                  strokeDasharray="125.6" strokeDashoffset="62.8" strokeLinecap="round"/>
+                <circle cx="26" cy="26" r="20" fill="none" stroke="#c9a84c" strokeWidth="4" strokeDasharray="125.6" strokeDashoffset="62.8" strokeLinecap="round"/>
               </svg>
-              <div style={{
-                position: "absolute", inset: 0, display: "flex",
-                alignItems: "center", justifyContent: "center",
-                fontSize: "13px", fontWeight: "700", color: "#c9a84c",
-              }}>2/4</div>
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: "700", color: "#c9a84c" }}>2/4</div>
             </div>
           </div>
 
           {/* KPI CARDS */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "18px" }}>
             {[
-              { label: "Total Balance", value: "$18,420", change: "↑ 12.4% vs last semester", type: "up", accent: "#4a90d9" },
-              { label: "Dues Collected", value: "$11,340", change: "38 of 56 members paid", type: "neutral", accent: "#2ecc8a" },
-              { label: "Budget Used", value: "$6,812", change: "38% of $18K budget", type: "neutral", accent: "#c9a84c" },
-              { label: "Pending Dues", value: "$5,220", change: "↓ 18 members overdue", type: "down", accent: "#e05c5c" },
+              { label: "Total Balance",  value: "$18,420", change: "↑ 12.4% vs last semester", type: "up",      accent: "#4a90d9" },
+              { label: "Dues Collected", value: "$11,340", change: "38 of 56 members paid",    type: "neutral", accent: "#2ecc8a" },
+              { label: "Budget Used",    value: "$6,812",  change: "38% of $18K budget",        type: "neutral", accent: "#c9a84c" },
+              { label: "Pending Dues",   value: "$5,220",  change: "↓ 18 members overdue",      type: "down",    accent: "#e05c5c" },
             ].map((kpi, i) => (
-              <div key={i} style={{
-                background: "#fff", border: "1px solid #dce3eb",
-                borderRadius: "12px", padding: "16px 18px",
-                position: "relative", overflow: "hidden",
-              }}>
+              <div key={i} style={{ background: "#fff", border: "1px solid #dce3eb", borderRadius: "12px", padding: "16px 18px", position: "relative", overflow: "hidden" }}>
                 <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", background: kpi.accent }} />
                 <div style={{ fontSize: "10px", fontWeight: "600", letterSpacing: "0.07em", textTransform: "uppercase", color: "#8a97a8", marginBottom: "8px" }}>{kpi.label}</div>
                 <div style={{ fontFamily: "'Sora', sans-serif", fontSize: "26px", fontWeight: "300", color: "#0d1b2a", lineHeight: 1, marginBottom: "6px" }}>{kpi.value}</div>
@@ -307,7 +166,7 @@ export default function Dashboard() {
                     <div style={{ fontSize: "14px", fontWeight: "600", color: "#0d1b2a" }}>Budget by Category</div>
                     <div style={{ fontSize: "11px", color: "#8a97a8", marginTop: "2px" }}>Spring 2025 · $18,000 total</div>
                   </div>
-                  <button style={{ fontSize: "12px", color: "#c9a84c", fontWeight: "500", border: "none", background: "none", cursor: "pointer" }}>Manage →</button>
+                  <a href="/budget" style={{ fontSize: "12px", color: "#c9a84c", fontWeight: "500", border: "none", background: "none", cursor: "pointer", textDecoration: "none" }}>Manage →</a>
                 </div>
                 {budgetCategories.map((cat, i) => (
                   <div key={i} style={{ padding: "11px 20px", display: "flex", alignItems: "center", gap: "14px", borderBottom: i < budgetCategories.length - 1 ? "1px solid #f3f5f8" : "none" }}>
@@ -333,7 +192,7 @@ export default function Dashboard() {
                     <div style={{ fontSize: "14px", fontWeight: "600", color: "#0d1b2a" }}>Recent Transactions</div>
                     <div style={{ fontSize: "11px", color: "#8a97a8", marginTop: "2px" }}>Last 7 days</div>
                   </div>
-                  <button style={{ fontSize: "12px", color: "#c9a84c", fontWeight: "500", border: "none", background: "none", cursor: "pointer" }}>View All →</button>
+                  <a href="/transactions" style={{ fontSize: "12px", color: "#c9a84c", fontWeight: "500", border: "none", background: "none", cursor: "pointer", textDecoration: "none" }}>View All →</a>
                 </div>
                 {transactions.map((tx, i) => (
                   <div key={i} style={{ padding: "11px 20px", display: "flex", alignItems: "center", gap: "12px", borderBottom: i < transactions.length - 1 ? "1px solid #f3f5f8" : "none" }}>
@@ -362,16 +221,11 @@ export default function Dashboard() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", padding: "16px" }}>
                   {[
                     { icon: "➕", label: "Add Transaction", desc: "Log an expense or income" },
-                    { icon: "🧾", label: "Scan Receipt", desc: "AI reads it for you" },
-                    { icon: "📧", label: "Send Reminders", desc: "Email overdue members" },
-                    { icon: "📄", label: "Export Report", desc: "Semester PDF summary" },
+                    { icon: "🧾", label: "Scan Receipt",    desc: "AI reads it for you" },
+                    { icon: "📧", label: "Send Reminders",  desc: "Email overdue members" },
+                    { icon: "📄", label: "Export Report",   desc: "Semester PDF summary" },
                   ].map((qa, i) => (
-                    <button key={i} style={{
-                      display: "flex", flexDirection: "column", alignItems: "center",
-                      justifyContent: "center", gap: "8px", padding: "18px 12px",
-                      background: "#f0f3f7", border: "1px solid #dce3eb",
-                      borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-                    }}>
+                    <button key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px", padding: "18px 12px", background: "#f0f3f7", border: "1px solid #dce3eb", borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
                       <span style={{ fontSize: "24px" }}>{qa.icon}</span>
                       <span style={{ fontSize: "12px", fontWeight: "500", color: "#0d1b2a", textAlign: "center" }}>{qa.label}</span>
                       <span style={{ fontSize: "10px", color: "#8a97a8", textAlign: "center" }}>{qa.desc}</span>
@@ -387,7 +241,7 @@ export default function Dashboard() {
                     <div style={{ fontSize: "14px", fontWeight: "600", color: "#0d1b2a" }}>Dues Tracker</div>
                     <div style={{ fontSize: "11px", color: "#8a97a8", marginTop: "2px" }}>Spring 2025 · $300 per member</div>
                   </div>
-                  <button style={{ fontSize: "12px", color: "#c9a84c", fontWeight: "500", border: "none", background: "none", cursor: "pointer" }}>All Members →</button>
+                  <a href="/members" style={{ fontSize: "12px", color: "#c9a84c", fontWeight: "500", border: "none", background: "none", cursor: "pointer", textDecoration: "none" }}>All Members →</a>
                 </div>
                 <div style={{ padding: "16px 20px", borderBottom: "1px solid #dce3eb" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
@@ -437,13 +291,7 @@ export default function Dashboard() {
                     { month: "May", height: 65, dashed: true },
                   ].map((bar, i) => (
                     <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "5px" }}>
-                      <div style={{
-                        width: "100%", borderRadius: "4px 4px 0 0",
-                        height: `${bar.height}px`,
-                        background: bar.gold ? "#c9a84c" : bar.dashed ? "transparent" : `rgba(74,144,217,${bar.opacity})`,
-                        border: bar.dashed ? "2px dashed rgba(74,144,217,0.25)" : "none",
-                        borderBottom: bar.dashed ? "none" : undefined,
-                      }} />
+                      <div style={{ width: "100%", borderRadius: "4px 4px 0 0", height: `${bar.height}px`, background: bar.gold ? "#c9a84c" : bar.dashed ? "transparent" : `rgba(74,144,217,${bar.opacity})`, border: bar.dashed ? "2px dashed rgba(74,144,217,0.25)" : "none" }} />
                       <div style={{ fontSize: "9px", color: "#8a97a8" }}>{bar.month}</div>
                     </div>
                   ))}

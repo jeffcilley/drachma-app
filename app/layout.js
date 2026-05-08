@@ -1,4 +1,4 @@
-import { Geist, Geist_Mono, Sora, DM_Sans } from "next/font/google";
+import { Geist, Geist_Mono, Sora, DM_Sans, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,6 +23,12 @@ const dmSans = DM_Sans({
   weight: ["300", "400", "500", "600"],
 });
 
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+});
+
 export const metadata = {
   title: "Drachma",
   description: "Greek Life Finance Platform",
@@ -31,8 +37,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} ${sora.variable} ${dmSans.variable} antialiased`}
-        style={{ fontFamily: "var(--font-dm-sans), sans-serif" }}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} ${sora.variable} ${dmSans.variable} ${cormorant.variable} antialiased`}
+        style={{ fontFamily: "var(--font-dm-sans), sans-serif" }}
+      >
         {children}
       </body>
     </html>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Sidebar from '../components/Sidebar';
 
 // ── HARDCODED DATA (replace with Supabase later) ──────────────
 const DUES_AMOUNT = 300;
@@ -53,6 +54,31 @@ export default function MembersPage() {
   const [duesFilter, setDuesFilter]     = useState('All');
   const [finesFilter, setFinesFilter]   = useState('Unpaid');
   const [search, setSearch]             = useState('');
+  const [addMemberModal, setAddMemberModal] = useState(false);
+  const [newMember, setNewMember]       = useState({ name: '', email: '', cls: 'Freshman', pledge: '' });
+
+  // ── ADD MEMBER ─────────────────────────────────────────────
+  function addMember() {
+    if (!newMember.name.trim() || !newMember.email.trim()) return;
+    const id = newMember.name.split(' ').map(n => n[0]).join('').toUpperCase() + Date.now().toString().slice(-2);
+    const colors = ['#4a90d9','#c9a84c','#2ecc8a','#a78bfa','#e05c5c','#f5a623','#8a97a8'];
+    const color  = colors[Math.floor(Math.random() * colors.length)];
+    const member = {
+      id,
+      name:        newMember.name.trim(),
+      email:       newMember.email.trim(),
+      cls:         newMember.cls,
+      pledge:      newMember.pledge.trim() || 'Spring 2025',
+      color,
+      dues:        'outstanding',
+      partialPaid: 0,
+      fines:       [],
+    };
+    setMembers(ms => [...ms, member]);
+    setNewMember({ name: '', email: '', cls: 'Freshman', pledge: '' });
+    setAddMemberModal(false);
+    showToast(`${member.name} added`);
+  }
 
   // ── TOAST ──────────────────────────────────────────────────
   function showToast(msg, undoFn = null) {
@@ -104,7 +130,6 @@ export default function MembersPage() {
   function markFinePaid(fineId) {
     const fine = fines.find(f => f.id === fineId);
     setFines(fs => fs.map(f => f.id === fineId ? { ...f, paid: true } : f));
-setMembers(ms => ms.map(m => m.id === fine.memberId ? { ...m, fines: m.fines.map(f => f.reason === fine.reason && f.amt === fine.amt ? { ...f, paid: true } : f) } : m));
     showToast(`${fine.name} fine marked paid — transaction auto-created`, () => {
       setFines(fs => fs.map(f => f.id === fineId ? { ...f, paid: false } : f));
     });
@@ -125,7 +150,6 @@ setMembers(ms => ms.map(m => m.id === fine.memberId ? { ...m, fines: m.fines.map
       paid: false,
     };
     setFines(fs => [newFine, ...fs]);
-setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fineForm.reason, date: newFine.date, amt: parseFloat(fineForm.amount), paid: false }, ...m.fines] } : m));
     setFineForm({ member: '', reason: '', amount: '' });
     setSelectedPreset(null);
     showToast(`Fine issued for ${member.name}`);
@@ -176,39 +200,7 @@ setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fine
     <div className="app-layout">
 
       {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">Drach<span>m</span>a</div>
-        <div className="sidebar-chapter">
-          <div className="chapter-name">PKA — Alpha Epsilon</div>
-          <div className="chapter-sub">University of Idaho</div>
-        </div>
-        <nav className="sidebar-nav">
-          <div className="nav-section">Overview</div>
-          <a href="/dashboard" className="nav-item">⬡ Dashboard</a>
-          <a href="/budget"    className="nav-item">≈ Budget</a>
-          <a href="/transactions" className="nav-item">↕ Transactions</a>
-          <div className="nav-section">Chapter</div>
-          <a href="/members"  className="nav-item active">
-            ☻ Members &amp; Dues
-            {overdueCt > 0 && <span className="nav-badge">{overdueCt}</span>}
-          </a>
-          <a href="/events"   className="nav-item">▪ Events</a>
-          <a href="/scanner"  className="nav-item">✎ Receipt Scanner</a>
-          <a href="/reports"  className="nav-item">✇ Reports</a>
-          <div className="nav-section">Access</div>
-          <a href="/advisor"  className="nav-item">⌂ Advisor Portal</a>
-          <a href="/settings" className="nav-item">⚙ Settings</a>
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="user-row">
-            <div className="av-gold">MJ</div>
-            <div>
-              <div className="user-name">Marcus Johnson</div>
-              <div className="user-role">Treasurer · Chapter Plan</div>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <Sidebar activePage="members" />
 
       {/* MAIN */}
       <div className="main">
@@ -226,7 +218,9 @@ setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fine
           <div className="topbar-right">
             <button className="btn-outline">Export CSV</button>
             <button className="btn-outline">Import from GreekBill / OmegaFi</button>
-            <button className="btn">{activeTab === 'dues' ? '+ Add Member' : '+ Issue Fine'}</button>
+            {activeTab === 'dues' && (
+              <button className="btn" onClick={() => setAddMemberModal(true)}>+ Add Member</button>
+            )}
           </div>
         </div>
 
@@ -251,12 +245,12 @@ setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fine
                 </div>
                 <div className="stat-card gold">
                   <div className="stat-label">Outstanding</div>
-                  <div className="stat-value">{fmt(members.filter(m => m.dues === 'outstanding').reduce((s, m) => s + (DUES_AMOUNT - (m.partialPaid || 0)), 0))}</div>
+                  <div className="stat-value">{fmt(outstandingCt * DUES_AMOUNT)}</div>
                   <div className="stat-sub">{outstandingCt} members outstanding</div>
                 </div>
                 <div className="stat-card red">
                   <div className="stat-label">Overdue</div>
-                  <div className="stat-value">{fmt(members.filter(m => m.dues === 'overdue').reduce((s, m) => s + (DUES_AMOUNT - (m.partialPaid || 0)), 0))}</div>
+                  <div className="stat-value">{fmt(overdueCt * DUES_AMOUNT)}</div>
                   <div className="stat-sub">{overdueCt} members overdue</div>
                 </div>
                 <div className="stat-card blue">
@@ -371,11 +365,11 @@ setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fine
                         </div>
                         <div className="breakdown-row">
                           <div className="breakdown-label"><div className="breakdown-dot" style={{ background: 'var(--gold)' }} />Outstanding</div>
-                          <div><div className="breakdown-val">{fmt(members.filter(m => m.dues === 'outstanding').reduce((s, m) => s + (DUES_AMOUNT - (m.partialPaid || 0)), 0))}</div><div className="breakdown-count">{outstandingCt} members</div></div>
+                          <div><div className="breakdown-val">{fmt(outstandingCt * DUES_AMOUNT)}</div><div className="breakdown-count">{outstandingCt} members</div></div>
                         </div>
                         <div className="breakdown-row">
                           <div className="breakdown-label"><div className="breakdown-dot" style={{ background: 'var(--red)' }} />Overdue</div>
-                          <div><div className="breakdown-val" style={{ color: 'var(--red-text)' }}>{fmt(members.filter(m => m.dues === 'overdue').reduce((s, m) => s + (DUES_AMOUNT - (m.partialPaid || 0)), 0))}</div><div className="breakdown-count">{overdueCt} members</div></div>
+                          <div><div className="breakdown-val" style={{ color: 'var(--red-text)' }}>{fmt(overdueCt * DUES_AMOUNT)}</div><div className="breakdown-count">{overdueCt} members</div></div>
                         </div>
                       </div>
                     </div>
@@ -535,7 +529,7 @@ setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fine
                       <div className="fine-form">
                         <select value={fineForm.member} onChange={e => setFineForm(f => ({ ...f, member: e.target.value }))}>
                           <option value="">Select member...</option>
-                          {members.map(m => <option key={m.id}>{m.name}</option>)}
+                          {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                         </select>
                         <input type="text" placeholder="Reason" value={fineForm.reason} onChange={e => setFineForm(f => ({ ...f, reason: e.target.value }))} />
                         <input type="number" placeholder="Amount ($)" value={fineForm.amount} onChange={e => setFineForm(f => ({ ...f, amount: e.target.value }))} />
@@ -654,6 +648,43 @@ setMembers(ms => ms.map(m => m.id === member.id ? { ...m, fines: [{ reason: fine
             })()}
           </div>
         </>
+      )}
+
+      {/* ADD MEMBER MODAL */}
+      {addMemberModal && (
+        <div className="modal-overlay" onClick={() => setAddMemberModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Add Member</div>
+            <div className="modal-sub">New member will be set to outstanding dues</div>
+            <div className="modal-fields">
+              <div className="modal-field">
+                <div className="field-label">Full Name</div>
+                <input className="modal-input" placeholder="e.g. Marcus Johnson" value={newMember.name} onChange={e => setNewMember(m => ({ ...m, name: e.target.value }))} autoFocus />
+              </div>
+              <div className="modal-field">
+                <div className="field-label">Email</div>
+                <input className="modal-input" placeholder="e.g. mjohnson@uidaho.edu" value={newMember.email} onChange={e => setNewMember(m => ({ ...m, email: e.target.value }))} />
+              </div>
+              <div className="modal-field">
+                <div className="field-label">Class Year</div>
+                <select className="modal-input" value={newMember.cls} onChange={e => setNewMember(m => ({ ...m, cls: e.target.value }))}>
+                  <option>Freshman</option>
+                  <option>Sophomore</option>
+                  <option>Junior</option>
+                  <option>Senior</option>
+                </select>
+              </div>
+              <div className="modal-field">
+                <div className="field-label">Pledge Class</div>
+                <input className="modal-input" placeholder="e.g. Fall 2024" value={newMember.pledge} onChange={e => setNewMember(m => ({ ...m, pledge: e.target.value }))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setAddMemberModal(false)}>Cancel</button>
+              <button className="btn" onClick={addMember}>Add Member</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* TOAST */}
