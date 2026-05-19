@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 
 const PLANS = [
   {
@@ -31,7 +32,7 @@ const PLANS = [
 ];
 
 export default function SignupPage() {
-  const [step, setStep] = useState(1); // 1 = account info, 2 = pick plan
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,6 +40,13 @@ export default function SignupPage() {
   const [university, setUniversity] = useState('');
   const [plan, setPlan] = useState('chapter');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const inputStyle = {
+    padding: '10px 14px', borderRadius: 8, border: '1px solid #dce3eb',
+    fontSize: 13, color: '#0d1b2a', fontFamily: 'inherit', outline: 'none',
+    background: '#ffffff', width: '100%', boxSizing: 'border-box',
+  };
 
   function handleStep1() {
     if (!name.trim() || !email.trim() || !password.trim() || !chapter.trim() || !university.trim()) {
@@ -49,15 +57,41 @@ export default function SignupPage() {
     setStep(2);
   }
 
-  function handleSignup() {
-    window.location.href = '/dashboard';
-  }
+  async function handleSignup() {
+    setLoading(true);
+    setError('');
 
-  const inputStyle = {
-    padding: '10px 14px', borderRadius: 8, border: '1px solid #dce3eb',
-    fontSize: 13, color: '#0d1b2a', fontFamily: 'inherit', outline: 'none',
-    background: '#ffffff', width: '100%', boxSizing: 'border-box',
-  };
+    try {
+      // Step 1 — Create Supabase Auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password.trim(),
+      });
+
+      if (authError) throw authError;
+
+      const authUser = authData.user;
+
+      // Step 2 — Call database function to create chapter and user
+      const { error: fnError } = await supabase.rpc('create_chapter_and_user', {
+        p_auth_id: authUser.id,
+        p_name: name.trim(),
+        p_email: email.trim(),
+        p_chapter_name: chapter.trim(),
+        p_university: university.trim(),
+        p_plan: plan,
+      });
+
+      if (fnError) throw fnError;
+
+      // Success — redirect to dashboard
+      window.location.href = '/dashboard';
+
+    } catch (err) {
+      setError(err.message || 'Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  }
 
   return (
     <div style={{
@@ -114,7 +148,6 @@ export default function SignupPage() {
             <div style={{ fontSize: 13, color: '#8a97a8', marginBottom: 24 }}>Start your 14-day free trial — no credit card required</div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 500, color: '#0d1b2a' }}>Your Name</label>
@@ -158,7 +191,6 @@ export default function SignupPage() {
               >
                 Continue →
               </button>
-
             </div>
 
             <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: '#8a97a8' }}>
@@ -218,6 +250,12 @@ export default function SignupPage() {
               })}
             </div>
 
+            {error && (
+              <div style={{ padding: '8px 12px', background: '#fde8e8', borderRadius: 8, fontSize: 12, color: '#c03c3c', fontWeight: 500, marginBottom: 12 }}>
+                {error}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 10 }}>
               <button
                 onClick={() => setStep(1)}
@@ -231,13 +269,15 @@ export default function SignupPage() {
               </button>
               <button
                 onClick={handleSignup}
+                disabled={loading}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                  background: '#c9a84c', color: '#0d1b2a', fontSize: 14, fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'inherit',
+                  background: loading ? '#8a97a8' : '#c9a84c',
+                  color: '#0d1b2a', fontSize: 14, fontWeight: 700,
+                  cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 }}
               >
-                Start Free Trial — {PLANS.find(p => p.id === plan)?.name} Plan
+                {loading ? 'Creating your account...' : `Start Free Trial — ${PLANS.find(p => p.id === plan)?.name} Plan`}
               </button>
             </div>
 
@@ -247,7 +287,6 @@ export default function SignupPage() {
           </div>
         )}
 
-        {/* FOOTER */}
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>
           © 2026 Drachma · Greek Life Finance Platform
         </div>

@@ -1,18 +1,33 @@
 'use client';
 
 import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
+  async function handleLogin() {
     if (!email.trim() || !password.trim()) {
       setError('Please enter your email and password.');
       return;
     }
+    setLoading(true);
     setError('');
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: password.trim(),
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
+    }
+
     window.location.href = '/dashboard';
   }
 
@@ -89,13 +104,16 @@ export default function LoginPage() {
 
             <button
               onClick={handleLogin}
+              disabled={loading}
               style={{
                 padding: '12px', borderRadius: 8, border: 'none',
-                background: '#0d1b2a', color: '#ffffff', fontSize: 14, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'inherit', marginTop: 4,
+                background: loading ? '#8a97a8' : '#0d1b2a',
+                color: '#ffffff', fontSize: 14, fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit', marginTop: 4,
               }}
             >
-              Sign In
+              {loading ? 'Signing in...' : 'Sign In'}
             </button>
 
           </div>
@@ -108,7 +126,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* FOOTER */}
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>
           © 2026 Drachma · Greek Life Finance Platform
         </div>
