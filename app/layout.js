@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono, Sora, DM_Sans, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "./context/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,7 +42,9 @@ export default function RootLayout({ children }) {
         className={`${geistSans.variable} ${geistMono.variable} ${sora.variable} ${dmSans.variable} ${cormorant.variable} antialiased`}
         style={{ fontFamily: "var(--font-dm-sans), sans-serif" }}
       >
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

@@ -55,11 +55,14 @@ const pillStyle = {
   overdue: { background: "#fde8e8", color: "#c03c3c" },
 };
 
+import ProtectedRoute from '../components/ProtectedRoute';
+
 export default function Dashboard() {
   const [semesterOpen, setSemesterOpen]       = useState(false);
   const [selectedSemester, setSelectedSemester] = useState("Spring 2025");
 
   return (
+    <ProtectedRoute>
     <div style={{
       fontFamily: "'DM Sans', sans-serif",
       display: "grid",
@@ -303,5 +306,6 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  </ProtectedRoute>
   );
 }
