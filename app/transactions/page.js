@@ -2,19 +2,14 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const CATEGORIES = {
-  housing:   { name: 'Housing / Rent',  color: '#4a90d9' },
-  nationals: { name: 'Nationals Dues',  color: '#c9a84c' },
-  insurance: { name: 'Insurance',       color: '#2ecc8a' },
-  social:    { name: 'Social Events',   color: '#a78bfa' },
-  phil:      { name: 'Philanthropy',    color: '#e05c5c' },
-  recruit:   { name: 'Recruitment',     color: '#f5a623' },
-  ops:       { name: 'Operations',      color: '#8a97a8' },
-  dues:      { name: 'Dues Collected',  color: '#2ecc8a' },
-  other:     { name: 'Uncategorized',   color: '#dce3eb' },
+  other: { name: 'Uncategorized', color: '#dce3eb' },
 };
 
 const BUDGET_AMOUNTS = {
@@ -27,32 +22,7 @@ const BUDGET_AMOUNTS = {
   ops:       { name: 'Operations',      budgeted: 1300,  color: '#8a97a8' },
 };
 
-const INITIAL_TRANSACTIONS = [
-  { id: 1,  date: '2026-03-05', desc: 'Spring Dues — Batch 4',            cat: 'dues',     amount: 3300,  type: 'income',  receipt: true,  notes: '11 members' },
-  { id: 2,  date: '2026-03-01', desc: 'Spring Dues — Batch 3',            cat: 'dues',     amount: 3600,  type: 'income',  receipt: true,  notes: '12 members' },
-  { id: 3,  date: '2026-02-28', desc: 'Venue Deposit — Spring Formal',    cat: 'social',   amount: 1200,  type: 'expense', receipt: false, notes: '' },
-  { id: 4,  date: '2026-02-28', desc: 'Monthly House Payment',            cat: 'housing',  amount: 2100,  type: 'expense', receipt: true,  notes: 'Feb payment' },
-  { id: 5,  date: '2026-02-26', desc: 'Chapter Meeting Dinner',           cat: 'ops',      amount: 340,   type: 'expense', receipt: false, notes: '' },
-  { id: 6,  date: '2026-02-24', desc: 'Spring Dues — Batch 2',            cat: 'dues',     amount: 3000,  type: 'income',  receipt: true,  notes: '10 members' },
-  { id: 7,  date: '2026-02-20', desc: 'Nationals Per-Member Fee',         cat: 'nationals',amount: 2500,  type: 'expense', receipt: true,  notes: 'Spring 2025' },
-  { id: 8,  date: '2026-02-18', desc: 'Liability Insurance Premium',      cat: 'insurance',amount: 600,   type: 'expense', receipt: true,  notes: 'Semi-annual' },
-  { id: 9,  date: '2026-02-15', desc: 'DJ Deposit — Spring Formal',       cat: 'social',   amount: 600,   type: 'expense', receipt: true,  notes: '' },
-  { id: 10, date: '2026-02-12', desc: 'Spring Dues — Batch 1',            cat: 'dues',     amount: 3300,  type: 'income',  receipt: true,  notes: '11 members' },
-  { id: 11, date: '2026-02-10', desc: 'Member Shirts — Rush',             cat: 'recruit',  amount: 600,   type: 'expense', receipt: true,  notes: '20 shirts' },
-  { id: 12, date: '2026-02-08', desc: 'Monthly House Payment',            cat: 'housing',  amount: 2100,  type: 'expense', receipt: true,  notes: 'Jan payment' },
-  { id: 13, date: '2026-02-05', desc: 'Rush Food & Drinks',               cat: 'recruit',  amount: 400,   type: 'expense', receipt: true,  notes: '' },
-  { id: 14, date: '2026-02-01', desc: 'Event Supplies — Philanthropy',    cat: 'phil',     amount: 500,   type: 'expense', receipt: true,  notes: '' },
-  { id: 15, date: '2026-01-28', desc: 'Alumni Donation',                  cat: 'other',    amount: 1500,  type: 'income',  receipt: false, notes: 'Annual gift' },
-  { id: 16, date: '2026-01-25', desc: 'Office Supplies',                  cat: 'ops',      amount: 85,    type: 'expense', receipt: false, notes: '' },
-  { id: 17, date: '2026-01-20', desc: 'Marketing / Flyers — Philanthropy',cat: 'phil',     amount: 400,   type: 'expense', receipt: true,  notes: '' },
-  { id: 18, date: '2026-01-18', desc: 'Monthly House Payment',            cat: 'housing',  amount: 2100,  type: 'expense', receipt: true,  notes: 'Dec payment' },
-  { id: 19, date: '2026-01-15', desc: 'Food & Drinks — Social',           cat: 'social',   amount: 240,   type: 'expense', receipt: true,  notes: '' },
-  { id: 20, date: '2026-01-12', desc: 'Fall Dues Carryover',              cat: 'dues',     amount: 2400,  type: 'income',  receipt: true,  notes: '8 late members' },
-  { id: 21, date: '2026-01-10', desc: 'Bid Day Supplies',                 cat: 'recruit',  amount: 200,   type: 'expense', receipt: true,  notes: '' },
-  { id: 22, date: '2026-01-08', desc: 'Decorations — Social',             cat: 'social',   amount: 200,   type: 'expense', receipt: true,  notes: '' },
-  { id: 23, date: '2026-01-05', desc: 'Games & Activities — Rush',        cat: 'recruit',  amount: 300,   type: 'expense', receipt: true,  notes: '' },
-  { id: 24, date: '2026-01-03', desc: 'Property Insurance Premium',       cat: 'insurance',amount: 400,   type: 'expense', receipt: true,  notes: '' },
-];
+// Transactions now loaded from Supabase
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -161,18 +131,18 @@ const inputStyle = {
 
 const selectStyle = { ...inputStyle, cursor: 'pointer' };
 
-function CategorySelect({ value, onChange, id }) {
+function CategorySelect({ value, onChange, id, catMap }) {
   return (
     <select id={id} value={value} onChange={e => onChange(e.target.value)} style={selectStyle}>
       <option value="">Select a category...</option>
-      {Object.entries(CATEGORIES).map(([k, v]) => (
+      {Object.entries(catMap).map(([k, v]) => (
         <option key={k} value={k}>{v.name}</option>
       ))}
     </select>
   );
 }
 
-function AddTransactionModal({ onClose, onSave }) {
+function AddTransactionModal({ onClose, onSave, catMap }) {
   const [type, setType] = useState('expense');
   const [validationError, setValidationError] = useState(false);
   const [desc, setDesc] = useState('');
@@ -210,7 +180,7 @@ function AddTransactionModal({ onClose, onSave }) {
             <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
           </ModalField>
           <ModalField label="Category" full>
-            <CategorySelect value={cat} onChange={setCat} />
+            <CategorySelect value={cat} onChange={setCat} catMap={catMap} />
           </ModalField>
           <ModalField label="Notes (optional)" full>
             <input style={inputStyle} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any additional details..." />
@@ -230,7 +200,7 @@ function AddTransactionModal({ onClose, onSave }) {
   );
 }
 
-function EditTransactionModal({ tx, onClose, onSave, onDelete }) {
+function EditTransactionModal({ tx, onClose, onSave, onDelete, catMap }) {
   const [type, setType] = useState(tx.type);
   const [desc, setDesc] = useState(tx.desc);
   const [amount, setAmount] = useState(String(tx.amount));
@@ -261,7 +231,7 @@ function EditTransactionModal({ tx, onClose, onSave, onDelete }) {
             <input style={inputStyle} type="number" value={amount} onChange={e => setAmount(e.target.value)} />
           </ModalField>
           <ModalField label="Category">
-            <CategorySelect value={cat} onChange={setCat} />
+            <CategorySelect value={cat} onChange={setCat} catMap={catMap} />
           </ModalField>
           <ModalField label="Date">
             <input style={inputStyle} type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -333,7 +303,7 @@ function Toast({ message, onUndo, onClose, countdown }) {
 
 // ── INLINE CATEGORY POPUP ─────────────────────────────────────────────────────
 
-function InlineCatPopup({ txId, anchorRect, onSelect, onClose }) {
+function InlineCatPopup({ txId, anchorRect, onSelect, onClose, catMap }) {
   useEffect(() => {
     const handler = (e) => {
       e.stopPropagation && e.stopPropagation();
@@ -355,7 +325,7 @@ function InlineCatPopup({ txId, anchorRect, onSelect, onClose }) {
         background: '#ffffff', border: '1px solid #dce3eb', borderRadius: 10,
         boxShadow: '0 8px 30px rgba(0,0,0,0.15)', zIndex: 300, minWidth: 180, padding: 6,
       }}>
-      {Object.entries(CATEGORIES).map(([id, cat]) => (
+      {Object.entries(catMap).map(([id, cat]) => (
         <div
           key={id}
           onClick={() => { onSelect(txId, id); }}
@@ -374,7 +344,10 @@ function InlineCatPopup({ txId, anchorRect, onSelect, onClose }) {
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
+  const { dbUser } = useAuth();
+  const [transactions, setTransactions] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('semester');
@@ -389,7 +362,51 @@ export default function TransactionsPage() {
   const [inlineCat, setInlineCat] = useState({ txId: null, rect: null });
   const toastTimerRef = useRef(null);
   const countdownRef = useRef(null);
-  const nextIdRef = useRef(25);
+  const nextIdRef = useRef(1000);
+
+  // ── FETCH DATA ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+    const [txRes, catRes] = await Promise.all([
+      supabase
+        .from('transactions')
+        .select('*, budget_categories(id, name, color)')
+        .eq('chapter_id', dbUser.chapter_id)
+        .order('date', { ascending: false }),
+      supabase
+        .from('budget_categories')
+        .select('*')
+        .eq('chapter_id', dbUser.chapter_id)
+        .order('name'),
+    ]);
+
+    if (txRes.data) {
+      setTransactions(txRes.data.map(tx => ({
+        id: tx.id,
+        date: tx.date,
+        desc: tx.description,
+        amount: tx.amount,
+        type: tx.type,
+        cat: tx.category_id ? String(tx.category_id) : 'other',
+        receipt: tx.verified,
+        notes: tx.notes || '',
+        category_id: tx.category_id,
+        categoryData: tx.budget_categories,
+      })));
+    }
+
+    if (catRes.data) {
+      setCategories(catRes.data);
+    }
+
+    setLoading(false);
+  }
 
   // ── TOAST ────────────────────────────────────────────────────────────────
 
@@ -416,12 +433,19 @@ export default function TransactionsPage() {
     setToast({ message: '', undoFn: null, countdown: 8 });
   }, []);
 
+  // Build dynamic CATEGORIES map from Supabase data
+  const catMap = useMemo(() => {
+    const map = { other: { name: 'Uncategorized', color: '#dce3eb' } };
+    categories.forEach(c => { map[String(c.id)] = { name: c.name, color: c.color }; });
+    return map;
+  }, [categories]);
+
   // ── FILTERING & SORTING ──────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     let list = transactions.filter(tx => {
       const matchSearch = tx.desc.toLowerCase().includes(search.toLowerCase()) ||
-                          CATEGORIES[tx.cat].name.toLowerCase().includes(search.toLowerCase());
+                          (catMap[tx.cat]?.name || '').toLowerCase().includes(search.toLowerCase());
       const matchType = typeFilter === 'all' ||
                         (typeFilter === 'income' && tx.type === 'income') ||
                         (typeFilter === 'expense' && tx.type === 'expense');
@@ -487,28 +511,101 @@ export default function TransactionsPage() {
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
 
-  function handleAdd(data) {
-    const newTx = { id: nextIdRef.current++, ...data };
-    setTransactions(prev => [newTx, ...prev]);
-    showToast(`"${data.desc}" added`);
+  async function handleAdd(data) {
+    const { data: newTx, error } = await supabase
+      .from('transactions')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        date: data.date,
+        description: data.desc,
+        amount: data.amount,
+        type: data.type,
+        category_id: data.cat && data.cat !== 'other' ? parseInt(data.cat) : null,
+        verified: false,
+        notes: data.notes,
+      })
+      .select('*, budget_categories(id, name, color)')
+      .single();
+
+    if (newTx) {
+      const mapped = {
+        id: newTx.id,
+        date: newTx.date,
+        desc: newTx.description,
+        amount: newTx.amount,
+        type: newTx.type,
+        cat: newTx.category_id ? String(newTx.category_id) : 'other',
+        receipt: newTx.verified,
+        notes: newTx.notes || '',
+        category_id: newTx.category_id,
+        categoryData: newTx.budget_categories,
+      };
+      setTransactions(prev => [mapped, ...prev]);
+      showToast(`"${data.desc}" added`);
+    }
   }
 
-  function handleSaveEdit(updated) {
-    setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
-    showToast('Transaction updated');
+  async function handleSaveEdit(updated) {
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        date: updated.date,
+        description: updated.desc,
+        amount: updated.amount,
+        type: updated.type,
+        category_id: updated.cat && updated.cat !== 'other' ? parseInt(updated.cat) : null,
+        verified: updated.receipt,
+        notes: updated.notes,
+      })
+      .eq('id', updated.id);
+
+    if (!error) {
+      setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
+      showToast('Transaction updated');
+    }
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
     const tx = transactions.find(t => t.id === id);
     const idx = transactions.findIndex(t => t.id === id);
     setTransactions(prev => prev.filter(t => t.id !== id));
-    showToast(`"${tx.desc}" deleted`, () => {
-      setTransactions(prev => {
-        const next = [...prev];
-        next.splice(idx, 0, tx);
-        return next;
-      });
+    showToast(`"${tx.desc}" deleted`, async () => {
+      const { data: restored } = await supabase
+        .from('transactions')
+        .insert({
+          chapter_id: dbUser.chapter_id,
+          date: tx.date,
+          description: tx.desc,
+          amount: tx.amount,
+          type: tx.type,
+          category_id: tx.category_id,
+          verified: tx.receipt,
+          notes: tx.notes,
+        })
+        .select('*, budget_categories(id, name, color)')
+        .single();
+
+      if (restored) {
+        setTransactions(prev => {
+          const next = [...prev];
+          const mappedRestored = {
+            id: restored.id,
+            date: restored.date,
+            desc: restored.description,
+            amount: restored.amount,
+            type: restored.type,
+            cat: restored.category_id ? String(restored.category_id) : 'other',
+            receipt: restored.verified,
+            notes: restored.notes || '',
+            category_id: restored.category_id,
+            categoryData: restored.budget_categories,
+          };
+          next.splice(idx, 0, mappedRestored);
+          return next;
+        });
+      }
     });
+    await supabase.from('transactions').delete().eq('id', id);
   }
 
   function handleDeleteFromEdit(id) {
@@ -593,7 +690,7 @@ export default function TransactionsPage() {
       .sort((a, b) => b[1] - a[1])
       .map(([catId, amt]) => ({
         catId, amt,
-        cat: CATEGORIES[catId],
+        cat: catMap[catId] || { name: 'Uncategorized', color: '#dce3eb' },
         pct: total > 0 ? Math.round(amt / total * 100) : 0,
       }));
   }, [transactions, catView]);
@@ -603,11 +700,14 @@ export default function TransactionsPage() {
     transactions.filter(t => t.type === 'expense').forEach(t => {
       spent[t.cat] = (spent[t.cat] || 0) + t.amount;
     });
-    return Object.entries(BUDGET_AMOUNTS).map(([catId, cat]) => {
+    return categories.filter(c => c.budgeted_amount > 0).map(c => {
+      const catId = String(c.id);
+      const cat = { name: c.name, color: c.color, budgeted: c.budgeted_amount };
       const spentAmt = spent[catId] || 0;
       const pct = cat.budgeted > 0 ? Math.min(Math.round(spentAmt / cat.budgeted * 100), 100) : 0;
       const isOver = spentAmt > cat.budgeted;
       return { catId, cat, spentAmt, pct, isOver };
+    return { catId, cat, spentAmt: spent[catId] || 0, pct: cat.budgeted > 0 ? Math.min(Math.round((spent[catId] || 0) / cat.budgeted * 100), 100) : 0, isOver: (spent[catId] || 0) > cat.budgeted };
     }).sort((a, b) => b.spentAmt - a.spentAmt);
   }, [transactions]);
 
@@ -618,7 +718,17 @@ export default function TransactionsPage() {
 
   // ── RENDER ───────────────────────────────────────────────────────────────
 
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading transactions...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
       <Sidebar activePage="transactions" />
 
@@ -710,7 +820,7 @@ export default function TransactionsPage() {
             {/* ROWS */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {filtered.map(tx => {
-                const cat = CATEGORIES[tx.cat];
+                const cat = catMap[tx.cat] || { name: 'Uncategorized', color: '#dce3eb' };
                 const isInc = tx.type === 'income';
                 const bal = balMap[tx.id];
                 const isSelected = selectedIds.has(tx.id);
@@ -887,13 +997,14 @@ export default function TransactionsPage() {
       </main>
 
       {/* MODALS */}
-      {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleAdd} />}
+      {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} onSave={handleAdd} catMap={catMap} />}
       {editTx && (
         <EditTransactionModal
           tx={editTx}
           onClose={() => setEditTx(null)}
           onSave={handleSaveEdit}
           onDelete={() => handleDeleteFromEdit(editTx.id)}
+          catMap={catMap}
         />
       )}
 
@@ -904,6 +1015,7 @@ export default function TransactionsPage() {
           anchorRect={inlineCat.rect}
           onSelect={handleInlineCatChange}
           onClose={() => setInlineCat({ txId: null, rect: null })}
+          catMap={catMap}
         />
       )}
 
@@ -918,6 +1030,7 @@ export default function TransactionsPage() {
         countdown={toast.countdown}
       />
     </div>
+    </ProtectedRoute>
   );
 }
 
