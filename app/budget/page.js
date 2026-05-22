@@ -2,6 +2,9 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 // ── HELPERS ───────────────────────────────────────────────────
 function fmt(n)    { return '$' + Number(n).toLocaleString(); }
@@ -9,68 +12,11 @@ function fmtK(n)   { return n >= 1000 ? '$' + (n / 1000).toFixed(1) + 'k' : fmt(
 function pctOf(a, b) { return b > 0 ? Math.min(Math.round((a / b) * 100), 100) : 0; }
 
 // ── INITIAL DATA ──────────────────────────────────────────────
-const SEMESTER = 'Spring 2025';
-const SEMESTER_PCT = 58; // % of semester complete (static until Supabase)
-
-const initialCategories = [
-  {
-    id: 'housing',   name: 'Housing / Rent',  budgeted: 6000,  spent: 6000,  color: '#4a90d9',
-    lineItems: [
-      { id: 'li-1', name: 'Monthly Rent',    budgeted: 5500, spent: 5500 },
-      { id: 'li-2', name: 'Utilities',       budgeted: 500,  spent: 500  },
-    ],
-  },
-  {
-    id: 'nationals', name: 'Nationals Dues',  budgeted: 2500,  spent: 2500,  color: '#c9a84c',
-    lineItems: [
-      { id: 'li-3', name: 'Per-member fee',  budgeted: 2500, spent: 2500 },
-    ],
-  },
-  {
-    id: 'insurance', name: 'Insurance',       budgeted: 1200,  spent: 600,   color: '#2ecc8a',
-    lineItems: [
-      { id: 'li-4', name: 'Liability Insurance', budgeted: 800, spent: 600 },
-      { id: 'li-5', name: 'Property Insurance',  budgeted: 400, spent: 0   },
-    ],
-  },
-  {
-    id: 'social',    name: 'Social Events',   budgeted: 3000,  spent: 1340,  color: '#a78bfa',
-    lineItems: [
-      { id: 'li-6',  name: 'DJ / Band',       budgeted: 800,  spent: 600 },
-      { id: 'li-7',  name: 'Venue',           budgeted: 1200, spent: 500 },
-      { id: 'li-8',  name: 'Food & Drinks',   budgeted: 600,  spent: 240 },
-      { id: 'li-9',  name: 'Decorations',     budgeted: 400,  spent: 0   },
-    ],
-  },
-  {
-    id: 'phil',      name: 'Philanthropy',    budgeted: 1500,  spent: 900,   color: '#e05c5c',
-    lineItems: [
-      { id: 'li-10', name: 'Event Supplies',      budgeted: 700, spent: 500 },
-      { id: 'li-11', name: 'Marketing / Flyers',  budgeted: 300, spent: 400 },
-      { id: 'li-12', name: 'Donation Match',      budgeted: 700, spent: 0   },
-    ],
-  },
-  {
-    id: 'recruit',   name: 'Recruitment',     budgeted: 2500,  spent: 1000,  color: '#f5a623',
-    lineItems: [
-      { id: 'li-13', name: 'Food & Drinks',       budgeted: 800, spent: 400 },
-      { id: 'li-14', name: 'Member Shirts',       budgeted: 600, spent: 600 },
-      { id: 'li-15', name: 'Games & Activities',  budgeted: 400, spent: 0   },
-      { id: 'li-16', name: 'Bid Day Supplies',    budgeted: 400, spent: 0   },
-      { id: 'li-17', name: 'Marketing',           budgeted: 300, spent: 0   },
-    ],
-  },
-  {
-    id: 'ops',       name: 'Operations',      budgeted: 1300,  spent: 0,     color: '#8a97a8',
-    lineItems: [
-      { id: 'li-18', name: 'Office Supplies',  budgeted: 300, spent: 0 },
-      { id: 'li-19', name: 'Software / Tools', budgeted: 600, spent: 0 },
-      { id: 'li-20', name: 'Miscellaneous',    budgeted: 400, spent: 0 },
-    ],
-  },
-];
+// Categories now loaded from Supabase
 
 const COLORS = ['#4a90d9','#c9a84c','#2ecc8a','#a78bfa','#e05c5c','#f5a623','#8a97a8'];
+const SEMESTER = 'Spring 2026';
+const SEMESTER_PCT = 58;
 
 // ── PROGRESS BAR COMPONENT ────────────────────────────────────
 function ProgressBar({ budgeted, spent, color }) {
@@ -138,7 +84,9 @@ function DonutChart({ categories }) {
 
 // ── MAIN PAGE ─────────────────────────────────────────────────
 export default function BudgetPage() {
-  const [categories, setCategories]     = useState(initialCategories);
+  const { dbUser } = useAuth();
+  const [categories, setCategories]     = useState([]);
+  const [loading, setLoading]           = useState(true);
   const [expandedId, setExpandedId]     = useState(null);   // category id with open sub-budget
   const [selectedId, setSelectedId]     = useState(null);   // category id shown in banner
   const [editModal, setEditModal]       = useState(null);   // { type:'category'|'line', catId, item } or null
@@ -149,6 +97,7 @@ export default function BudgetPage() {
   const [toast, setToast]               = useState(null);
   const [editName, setEditName]         = useState('');
   const [editAmt, setEditAmt]           = useState('');
+  const [editIsFixed, setEditIsFixed]   = useState(false);
   const [view, setView]                 = useState('budget'); // 'budget' | 'collections'
 
   // ── COLLECTIONS STATE ──────────────────────────────────────
@@ -198,6 +147,79 @@ export default function BudgetPage() {
     }
   }
 
+  // ── FETCH DATA ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+
+    const [catRes, lineRes, txRes, collRes] = await Promise.all([
+      supabase
+        .from('budget_categories')
+        .select('*')
+        .eq('chapter_id', dbUser.chapter_id)
+        .order('name'),
+      supabase
+        .from('budget_line_items')
+        .select('*')
+        .eq('chapter_id', dbUser.chapter_id),
+      supabase
+        .from('transactions')
+        .select('category_id, amount, type')
+        .eq('chapter_id', dbUser.chapter_id)
+        .eq('type', 'expense'),
+      supabase
+        .from('collections_config')
+        .select('*')
+        .eq('chapter_id', dbUser.chapter_id)
+        .single(),
+    ]);
+
+    // Calculate spent amounts from transactions
+    const spentMap = {};
+    if (txRes.data) {
+      txRes.data.forEach(tx => {
+        if (tx.category_id) {
+          spentMap[tx.category_id] = (spentMap[tx.category_id] || 0) + Number(tx.amount);
+        }
+      });
+    }
+
+    // Build categories with line items and spent amounts
+    if (catRes.data) {
+      const mapped = catRes.data.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        budgeted: Number(cat.budgeted_amount),
+        spent: spentMap[cat.id] || 0,
+        color: cat.color || '#8a97a8',
+        is_fixed: cat.is_fixed || false,
+        lineItems: (lineRes.data || [])
+          .filter(li => li.category_id === cat.id)
+          .map(li => ({
+            id: li.id,
+            name: li.name,
+            budgeted: Number(li.budgeted_amount),
+            spent: 0,
+          })),
+      }));
+      setCategories(mapped);
+    }
+
+    // Load collections config if exists
+    if (collRes.data) {
+      setCollectionRate(collRes.data.collection_rate || 85);
+      if (collRes.data.other_income) {
+        setOtherIncome(collRes.data.other_income);
+      }
+    }
+
+    setLoading(false);
+  }
+
   // ── COMPUTED TOTALS ────────────────────────────────────────
   const totalBudgeted  = categories.reduce((s, c) => s + c.budgeted, 0);
   const totalSpent     = categories.reduce((s, c) => s + c.spent, 0);
@@ -211,7 +233,7 @@ export default function BudgetPage() {
   const totalExpectedCollections = totalDues + totalOther;
   const projectedCollections = Math.round(totalExpectedCollections * (collectionRate / 100));
   const fixedCosts = categories
-    .filter(c => ['housing', 'nationals', 'insurance'].includes(c.id))
+    .filter(c => c.is_fixed)
     .reduce((s, c) => s + c.budgeted, 0);
   const surplus = projectedCollections - totalBudgeted;
   const coversFixed = projectedCollections >= fixedCosts;
@@ -245,37 +267,66 @@ export default function BudgetPage() {
   }
 
   // ── ADD CATEGORY ───────────────────────────────────────────
-  function saveCategory() {
+  async function saveCategory() {
     const name = newCat.name.trim();
     const amt  = parseFloat(newCat.amount);
     if (!name || !amt) return;
     const color = COLORS[categories.length % COLORS.length];
-    const newCategory = {
-      id:        'cat-' + Date.now(),
-      name,
-      budgeted:  amt,
-      spent:     0,
-      color,
-      lineItems: [],
-    };
-    setCategories(cs => [...cs, newCategory]);
-    setNewCat({ name: '', amount: '' });
-    setAddSheet(false);
-    showToast(`"${name}" added — ${fmt(amt)} budgeted`);
+
+    const { data, error } = await supabase
+      .from('budget_categories')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        name,
+        budgeted_amount: amt,
+        color,
+        is_fixed: false,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setCategories(cs => [...cs, {
+        id: data.id,
+        name: data.name,
+        budgeted: Number(data.budgeted_amount),
+        spent: 0,
+        color: data.color,
+        is_fixed: data.is_fixed,
+        lineItems: [],
+      }]);
+      setNewCat({ name: '', amount: '' });
+      setAddSheet(false);
+      showToast(`"${name}" added — ${fmt(amt)} budgeted`);
+    }
   }
 
   // ── ADD LINE ITEM ──────────────────────────────────────────
-  function saveLineItem(catId) {
+  async function saveLineItem(catId) {
     const name = newLine.name.trim();
     const amt  = parseFloat(newLine.amount);
     if (!name || !amt) return;
-    setCategories(cs => cs.map(c => c.id !== catId ? c : {
-      ...c,
-      lineItems: [...c.lineItems, { id: 'li-' + Date.now(), name, budgeted: amt, spent: 0 }],
-    }));
-    setNewLine({ name: '', amount: '' });
-    setAddLineId(null);
-    showToast(`${name} added`);
+
+    const { data, error } = await supabase
+      .from('budget_line_items')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        category_id: catId,
+        name,
+        budgeted_amount: amt,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setCategories(cs => cs.map(c => c.id !== catId ? c : {
+        ...c,
+        lineItems: [...c.lineItems, { id: data.id, name: data.name, budgeted: Number(data.budgeted_amount), spent: 0 }],
+      }));
+      setNewLine({ name: '', amount: '' });
+      setAddLineId(null);
+      showToast(`${name} added`);
+    }
   }
 
   // ── OPEN EDIT MODAL ────────────────────────────────────────
@@ -283,6 +334,7 @@ export default function BudgetPage() {
     setEditModal({ type: 'category', catId: cat.id, item: cat });
     setEditName(cat.name);
     setEditAmt(String(cat.budgeted));
+    setEditIsFixed(cat.is_fixed || false);
   }
 
   function openEditLine(catId, li) {
@@ -292,37 +344,65 @@ export default function BudgetPage() {
   }
 
   // ── SAVE EDIT ──────────────────────────────────────────────
-  function saveEdit() {
+  async function saveEdit() {
     const name = editName.trim();
     const amt  = parseFloat(editAmt);
     if (!name || isNaN(amt)) { setEditModal(null); return; }
 
     if (editModal.type === 'category') {
-      setCategories(cs => cs.map(c => c.id !== editModal.catId ? c : { ...c, name, budgeted: amt }));
-      if (selectedId === editModal.catId) setSelectedId(editModal.catId); // refresh banner
+      const { error } = await supabase
+        .from('budget_categories')
+        .update({ name, budgeted_amount: amt, is_fixed: editIsFixed })
+        .eq('id', editModal.catId);
+
+      if (!error) {
+        setCategories(cs => cs.map(c => c.id !== editModal.catId ? c : { ...c, name, budgeted: amt, is_fixed: editIsFixed }));
+        if (selectedId === editModal.catId) setSelectedId(editModal.catId);
+      }
     } else {
-      setCategories(cs => cs.map(c => c.id !== editModal.catId ? c : {
-        ...c,
-        lineItems: c.lineItems.map(li => li.id !== editModal.item.id ? li : { ...li, name, budgeted: amt }),
-      }));
+      const { error } = await supabase
+        .from('budget_line_items')
+        .update({ name, budgeted_amount: amt })
+        .eq('id', editModal.item.id);
+
+      if (!error) {
+        setCategories(cs => cs.map(c => c.id !== editModal.catId ? c : {
+          ...c,
+          lineItems: c.lineItems.map(li => li.id !== editModal.item.id ? li : { ...li, name, budgeted: amt }),
+        }));
+      }
     }
     setEditModal(null);
     showToast('Changes saved');
   }
 
   // ── DELETE ─────────────────────────────────────────────────
-  function deleteTarget() {
+  async function deleteTarget() {
     if (editModal.type === 'category') {
-      if (selectedId === editModal.catId) setSelectedId(null);
-      if (expandedId === editModal.catId) setExpandedId(null);
-      setCategories(cs => cs.filter(c => c.id !== editModal.catId));
-      showToast('Category deleted');
+      const { error } = await supabase
+        .from('budget_categories')
+        .delete()
+        .eq('id', editModal.catId);
+
+      if (!error) {
+        if (selectedId === editModal.catId) setSelectedId(null);
+        if (expandedId === editModal.catId) setExpandedId(null);
+        setCategories(cs => cs.filter(c => c.id !== editModal.catId));
+        showToast('Category deleted');
+      }
     } else {
-      setCategories(cs => cs.map(c => c.id !== editModal.catId ? c : {
-        ...c,
-        lineItems: c.lineItems.filter(li => li.id !== editModal.item.id),
-      }));
-      showToast('Line item deleted');
+      const { error } = await supabase
+        .from('budget_line_items')
+        .delete()
+        .eq('id', editModal.item.id);
+
+      if (!error) {
+        setCategories(cs => cs.map(c => c.id !== editModal.catId ? c : {
+          ...c,
+          lineItems: c.lineItems.filter(li => li.id !== editModal.item.id),
+        }));
+        showToast('Line item deleted');
+      }
     }
     setEditModal(null);
   }
@@ -441,7 +521,17 @@ export default function BudgetPage() {
   };
 
   // ── RENDER ─────────────────────────────────────────────────
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f0f3f7', fontFamily: 'var(--font-dm-sans), sans-serif' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading budget...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div style={S.wrap}>
 
       {/* SIDEBAR */}
@@ -1073,6 +1163,20 @@ export default function BudgetPage() {
               <div style={S.modalLabel}>Budget Amount</div>
               <input style={S.modalInput} type="number" value={editAmt} onChange={e => setEditAmt(e.target.value)} />
             </div>
+            {editModal.type === 'category' && (
+              <div style={{ ...S.modalField, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={editIsFixed}
+                  onChange={e => setEditIsFixed(e.target.checked)}
+                  style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0d1b2a' }}
+                />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: '#0d1b2a' }}>Fixed cost</div>
+                  <div style={{ fontSize: 11, color: '#8a97a8' }}>Must pay regardless of collections (e.g. rent, nationals)</div>
+                </div>
+              </div>
+            )}
             <div style={S.modalFooter}>
               <button style={S.modalDelete} onClick={deleteTarget}>
                 Delete {editModal.type === 'category' ? 'category' : 'line item'}
@@ -1124,5 +1228,6 @@ export default function BudgetPage() {
       )}
 
     </div>
+    </ProtectedRoute>
   );
 }
