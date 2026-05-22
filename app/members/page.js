@@ -1,29 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
-// ── HARDCODED DATA (replace with Supabase later) ──────────────
-const DUES_AMOUNT = 300;
-
-const initialMembers = [
-  { id: 'AK', name: 'Alex Kim',     email: 'akim@uidaho.edu',     cls: 'Junior',    pledge: 'Fall 2022', color: '#4a90d9', dues: 'paid',        partialPaid: 300, fines: [{ reason: 'Missed chapter meeting', date: 'Feb 15', amt: 25, paid: true  }] },
-  { id: 'TM', name: 'Tyler Morris', email: 'tmorris@uidaho.edu',  cls: 'Sophomore', pledge: 'Fall 2023', color: '#c9a84c', dues: 'outstanding',  partialPaid: 0,   fines: [{ reason: 'No show — philanthropy', date: 'Feb 28', amt: 50, paid: false }, { reason: 'Dress code violation', date: 'Jan 20', amt: 10, paid: true }] },
-  { id: 'JP', name: 'Jordan Park',  email: 'jpark@uidaho.edu',    cls: 'Senior',    pledge: 'Fall 2021', color: '#2ecc8a', dues: 'paid',        partialPaid: 300, fines: [] },
-  { id: 'CW', name: 'Connor Walsh', email: 'cwalsh@uidaho.edu',   cls: 'Junior',    pledge: 'Fall 2022', color: '#e05c5c', dues: 'overdue',     partialPaid: 0,   fines: [{ reason: 'Missed chapter meeting', date: 'Mar 1',  amt: 25, paid: false }, { reason: 'No show — bid day', date: 'Feb 10', amt: 50, paid: false }, { reason: 'Late dues fee', date: 'Jan 15', amt: 15, paid: true }] },
-  { id: 'RB', name: 'Ryan Brooks',  email: 'rbrooks@uidaho.edu',  cls: 'Freshman',  pledge: 'Fall 2024', color: '#a78bfa', dues: 'outstanding',  partialPaid: 0,   fines: [{ reason: 'Missed chapter meeting', date: 'Feb 22', amt: 25, paid: false }] },
-  { id: 'MS', name: 'Matt Stevens', email: 'mstevens@uidaho.edu', cls: 'Senior',    pledge: 'Fall 2021', color: '#4a90d9', dues: 'paid',        partialPaid: 300, fines: [{ reason: 'Dress code violation', date: 'Feb 26', amt: 25, paid: false }] },
-  { id: 'DL', name: 'Dylan Lee',    email: 'dlee@uidaho.edu',     cls: 'Sophomore', pledge: 'Fall 2023', color: '#e05c5c', dues: 'overdue',     partialPaid: 0,   fines: [] },
-  { id: 'KH', name: 'Kevin Hart',   email: 'khart@uidaho.edu',    cls: 'Junior',    pledge: 'Fall 2022', color: '#2ecc8a', dues: 'paid',        partialPaid: 300, fines: [] },
-];
-
-const initialFines = [
-  { id: 'CW1', memberId: 'CW', name: 'Connor Walsh', reason: 'Missed chapter',       date: 'Mar 1',  amt: 25, paid: false },
-  { id: 'TM1', memberId: 'TM', name: 'Tyler Morris', reason: 'No show — philanthropy', date: 'Feb 28', amt: 50, paid: false },
-  { id: 'MS1', memberId: 'MS', name: 'Matt Stevens', reason: 'Dress code violation', date: 'Feb 26', amt: 25, paid: false },
-  { id: 'RB1', memberId: 'RB', name: 'Ryan Brooks',  reason: 'Late dues fee',        date: 'Feb 20', amt: 15, paid: false },
-  { id: 'AK1', memberId: 'AK', name: 'Alex Kim',     reason: 'Missed chapter',       date: 'Feb 15', amt: 25, paid: true  },
-];
+const COLORS = ['#4a90d9','#c9a84c','#2ecc8a','#a78bfa','#e05c5c','#f5a623','#8a97a8'];
+const SEMESTER = 'Spring 2026';
 
 // ── HELPERS ───────────────────────────────────────────────────
 function initials(name) { return name.split(' ').map(n => n[0]).join(''); }
@@ -41,9 +25,13 @@ function StatusPill({ status }) {
 
 // ── MAIN PAGE ─────────────────────────────────────────────────
 export default function MembersPage() {
+  const { dbUser } = useAuth();
   const [activeTab, setActiveTab]       = useState('dues');
-  const [members, setMembers]           = useState(initialMembers);
-  const [fines, setFines]               = useState(initialFines);
+  const [members, setMembers]           = useState([]);
+  const [dues, setDues]                 = useState([]);
+  const [fines, setFines]               = useState([]);
+  const [duesTiers, setDuesTiers]       = useState([]);
+  const [loading, setLoading]           = useState(true);
   const [selectedIds, setSelectedIds]   = useState(new Set());
   const [drawer, setDrawer]             = useState(null);       // member id or null
   const [toast, setToast]               = useState(null);       // { msg, showUndo, undo }
@@ -57,27 +45,70 @@ export default function MembersPage() {
   const [addMemberModal, setAddMemberModal] = useState(false);
   const [newMember, setNewMember]       = useState({ name: '', email: '', cls: 'Freshman', pledge: '' });
 
+  // ── FETCH DATA ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+    const [membersRes, duesRes, finesRes, tiersRes] = await Promise.all([
+      supabase.from('members').select('*').eq('chapter_id', dbUser.chapter_id).order('name'),
+      supabase.from('dues_payments').select('*').eq('chapter_id', dbUser.chapter_id),
+      supabase.from('fines').select('*').eq('chapter_id', dbUser.chapter_id).order('created_at', { ascending: false }),
+      supabase.from('dues_tiers').select('*').eq('chapter_id', dbUser.chapter_id),
+    ]);
+    if (membersRes.data) setMembers(membersRes.data.map(m => ({
+      ...m,
+      color: COLORS[m.id % COLORS.length],
+    })));
+    if (duesRes.data) setDues(duesRes.data);
+    if (finesRes.data) setFines(finesRes.data.map(f => ({
+      ...f,
+      name: membersRes.data?.find(m => m.id === f.member_id)?.name || '',
+      amt: Number(f.amount),
+      date: new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    })));
+    if (tiersRes.data) setDuesTiers(tiersRes.data);
+    setLoading(false);
+  }
+
   // ── ADD MEMBER ─────────────────────────────────────────────
-  function addMember() {
+  async function addMember() {
     if (!newMember.name.trim() || !newMember.email.trim()) return;
-    const id = newMember.name.split(' ').map(n => n[0]).join('').toUpperCase() + Date.now().toString().slice(-2);
-    const colors = ['#4a90d9','#c9a84c','#2ecc8a','#a78bfa','#e05c5c','#f5a623','#8a97a8'];
-    const color  = colors[Math.floor(Math.random() * colors.length)];
-    const member = {
-      id,
-      name:        newMember.name.trim(),
-      email:       newMember.email.trim(),
-      cls:         newMember.cls,
-      pledge:      newMember.pledge.trim() || 'Spring 2025',
-      color,
-      dues:        'outstanding',
-      partialPaid: 0,
-      fines:       [],
-    };
-    setMembers(ms => [...ms, member]);
-    setNewMember({ name: '', email: '', cls: 'Freshman', pledge: '' });
-    setAddMemberModal(false);
-    showToast(`${member.name} added`);
+
+    const { data, error } = await supabase
+      .from('members')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        name: newMember.name.trim(),
+        email: newMember.email.trim(),
+        status: 'active',
+        pledge_class: newMember.pledge.trim() || SEMESTER,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      // Create dues payment record
+      if (duesTiers.length > 0) {
+        await supabase.from('dues_payments').insert({
+          chapter_id: dbUser.chapter_id,
+          member_id: data.id,
+          tier_id: duesTiers[0].id,
+          semester: SEMESTER,
+          amount_owed: duesTiers[0].amount,
+          amount_paid: 0,
+          status: 'outstanding',
+        });
+      }
+      setMembers(ms => [...ms, { ...data, color: COLORS[data.id % COLORS.length] }]);
+      setNewMember({ name: '', email: '', cls: 'Freshman', pledge: '' });
+      setAddMemberModal(false);
+      showToast(`${data.name} added`);
+      fetchData();
+    }
   }
 
   // ── TOAST ──────────────────────────────────────────────────
@@ -86,13 +117,35 @@ export default function MembersPage() {
     setTimeout(() => setToast(null), undoFn ? 10000 : 3000);
   }
 
+  // ── DUES HELPERS ───────────────────────────────────────────
+  function getMemberDues(memberId) {
+    return dues.find(d => d.member_id === memberId && d.semester === SEMESTER);
+  }
+
+  function getMemberDuesStatus(memberId) {
+    const d = getMemberDues(memberId);
+    if (!d) return 'outstanding';
+    return d.status || 'outstanding';
+  }
+
+  function getMemberPartialPaid(memberId) {
+    const d = getMemberDues(memberId);
+    return d ? Number(d.amount_paid) || 0 : 0;
+  }
+
+  function getMemberDuesOwed(memberId) {
+    const d = getMemberDues(memberId);
+    return d ? Number(d.amount_owed) || 0 : 0;
+  }
+
   // ── DUES STATS ─────────────────────────────────────────────
-  const collectedAmt  = members.reduce((s, m) => s + (m.partialPaid || 0), 0);
-  const outstandingCt = members.filter(m => m.dues === 'outstanding').length;
-  const overdueCt     = members.filter(m => m.dues === 'overdue').length;
-  const paidCt        = members.filter(m => m.dues === 'paid').length;
+  const DUES_AMOUNT   = duesTiers.length > 0 ? Number(duesTiers[0].amount) : 300;
+  const collectedAmt  = dues.filter(d => d.semester === SEMESTER).reduce((s, d) => s + (Number(d.amount_paid) || 0), 0);
+  const outstandingCt = dues.filter(d => d.semester === SEMESTER && d.status === 'outstanding').length;
+  const overdueCt     = dues.filter(d => d.semester === SEMESTER && d.status === 'overdue').length;
+  const paidCt        = dues.filter(d => d.semester === SEMESTER && d.status === 'paid').length;
   const totalExpected = members.length * DUES_AMOUNT;
-  const pct           = Math.round(collectedAmt / totalExpected * 100);
+  const pct           = totalExpected > 0 ? Math.round(collectedAmt / totalExpected * 100) : 0;
 
   // ── FINES STATS ────────────────────────────────────────────
   const finesOutstanding = fines.filter(f => !f.paid).reduce((s, f) => s + f.amt, 0);
@@ -101,58 +154,111 @@ export default function MembersPage() {
   const membersFined     = new Set(fines.map(f => f.memberId)).size;
 
   // ── MARK DUES PAID ─────────────────────────────────────────
-  function markDuesPaid(id) {
-    const prev = members.find(m => m.id === id);
-    setMembers(ms => ms.map(m => m.id === id ? { ...m, dues: 'paid', partialPaid: DUES_AMOUNT } : m));
-    showToast(`${prev.name} marked paid — transaction auto-created`, () => {
-      setMembers(ms => ms.map(m => m.id === id ? { ...m, dues: prev.dues, partialPaid: prev.partialPaid } : m));
+  async function markDuesPaid(id) {
+    const member = members.find(m => m.id === id);
+    const duesRecord = getMemberDues(id);
+
+    if (duesRecord) {
+      await supabase.from('dues_payments').update({
+        status: 'paid',
+        amount_paid: duesRecord.amount_owed,
+        paid_date: new Date().toISOString().split('T')[0],
+      }).eq('id', duesRecord.id);
+    }
+
+    // Auto-create income transaction
+    await supabase.from('transactions').insert({
+      chapter_id: dbUser.chapter_id,
+      date: new Date().toISOString().split('T')[0],
+      description: `Dues Payment — ${member.name}`,
+      amount: DUES_AMOUNT,
+      type: 'income',
+      verified: true,
+      notes: `${SEMESTER} dues`,
     });
+
+    showToast(`${member.name} marked paid — transaction created`);
+    fetchData();
   }
 
   // ── LOG PAYMENT (PARTIAL) ──────────────────────────────────
-  function confirmLogPayment() {
+  async function confirmLogPayment() {
     const amount = parseFloat(lpAmount);
     if (!amount || amount <= 0) return;
-    const m = members.find(m => m.id === lpModal.id);
-    const newPaid = (m.partialPaid || 0) + amount;
+    const member = members.find(m => m.id === lpModal.id);
+    const duesRecord = getMemberDues(lpModal.id);
+    const newPaid = getMemberPartialPaid(lpModal.id) + amount;
+
     if (newPaid >= DUES_AMOUNT) {
       setLpModal(null); setLpAmount('');
       markDuesPaid(lpModal.id);
       return;
     }
-    setMembers(ms => ms.map(m => m.id === lpModal.id ? { ...m, partialPaid: newPaid } : m));
+
+    if (duesRecord) {
+      await supabase.from('dues_payments').update({
+        amount_paid: newPaid,
+        status: 'outstanding',
+      }).eq('id', duesRecord.id);
+    }
+
+    // Auto-create income transaction for partial payment
+    await supabase.from('transactions').insert({
+      chapter_id: dbUser.chapter_id,
+      date: new Date().toISOString().split('T')[0],
+      description: `Partial Dues Payment — ${member.name}`,
+      amount: amount,
+      type: 'income',
+      verified: true,
+      notes: `${SEMESTER} dues — ${fmt(newPaid)} of ${fmt(DUES_AMOUNT)} paid`,
+    });
+
     const remaining = DUES_AMOUNT - newPaid;
     setLpModal(null); setLpAmount('');
-    showToast(`${fmt(amount)} logged for ${m.name} — ${fmt(remaining)} remaining`);
+    await fetchData();
+    showToast(`${fmt(amount)} logged for ${member.name} — ${fmt(remaining)} remaining`);
   }
 
   // ── MARK FINE PAID ─────────────────────────────────────────
-  function markFinePaid(fineId) {
+  async function markFinePaid(fineId) {
     const fine = fines.find(f => f.id === fineId);
-    setFines(fs => fs.map(f => f.id === fineId ? { ...f, paid: true } : f));
-    showToast(`${fine.name} fine marked paid — transaction auto-created`, () => {
-      setFines(fs => fs.map(f => f.id === fineId ? { ...f, paid: false } : f));
+    await supabase.from('fines').update({ paid: true }).eq('id', fineId);
+
+    // Auto-create income transaction
+    await supabase.from('transactions').insert({
+      chapter_id: dbUser.chapter_id,
+      date: new Date().toISOString().split('T')[0],
+      description: `Fine Payment — ${fine.name}`,
+      amount: fine.amt,
+      type: 'income',
+      verified: true,
+      notes: fine.reason,
     });
+
+    showToast(`${fine.name} fine marked paid — transaction created`);
+    fetchData();
   }
 
   // ── ISSUE FINE ─────────────────────────────────────────────
-  function issueFine() {
+  async function issueFine() {
     if (!fineForm.member || !fineForm.reason || !fineForm.amount) return;
     const member = members.find(m => m.name === fineForm.member);
     if (!member) return;
-    const newFine = {
-      id: member.id + Date.now(),
-      memberId: member.id,
-      name: member.name,
+
+    const { data, error } = await supabase.from('fines').insert({
+      chapter_id: dbUser.chapter_id,
+      member_id: member.id,
       reason: fineForm.reason,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      amt: parseFloat(fineForm.amount),
+      amount: parseFloat(fineForm.amount),
       paid: false,
-    };
-    setFines(fs => [newFine, ...fs]);
-    setFineForm({ member: '', reason: '', amount: '' });
-    setSelectedPreset(null);
-    showToast(`Fine issued for ${member.name}`);
+    }).select().single();
+
+    if (data) {
+      setFineForm({ member: '', reason: '', amount: '' });
+      setSelectedPreset(null);
+      showToast(`Fine issued for ${member.name}`);
+      fetchData();
+    }
   }
 
   // ── BULK ACTIONS ───────────────────────────────────────────
@@ -183,7 +289,7 @@ export default function MembersPage() {
   // ── FILTERED LISTS ─────────────────────────────────────────
   const filteredMembers = members.filter(m => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = duesFilter === 'All' || m.dues === duesFilter.toLowerCase();
+    const matchFilter = duesFilter === 'All' || getMemberDuesStatus(m.id) === duesFilter.toLowerCase();
     return matchSearch && matchFilter;
   });
 
@@ -196,7 +302,17 @@ export default function MembersPage() {
   // ── DRAWER MEMBER ──────────────────────────────────────────
   const drawerMember = drawer ? members.find(m => m.id === drawer) : null;
 
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading members...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div className="app-layout">
 
       {/* SIDEBAR */}
@@ -303,7 +419,9 @@ export default function MembersPage() {
                   {/* Rows */}
                   <div className="card-body">
                     {filteredMembers.map(m => {
-                      const remaining = DUES_AMOUNT - (m.partialPaid || 0);
+                      const duesStatus = getMemberDuesStatus(m.id);
+                      const partialPaid = getMemberPartialPaid(m.id);
+                      const remaining = getMemberDuesOwed(m.id) - partialPaid;
                       const isSelected = selectedIds.has(m.id);
                       return (
                         <div key={m.id} className={`member-row dues-cols ${isSelected ? 'selected' : ''}`}>
@@ -320,15 +438,15 @@ export default function MembersPage() {
                             </div>
                           </div>
                           <div className="cell">{m.cls}</div>
-                          <div className="cell-amt" style={{ color: m.dues === 'paid' ? 'var(--green-text)' : m.partialPaid > 0 ? 'var(--blue)' : 'var(--gray)' }}>
-                            {fmt(m.partialPaid || 0)}
+                          <div className="cell-amt" style={{ color: duesStatus === 'paid' ? 'var(--green-text)' : partialPaid > 0 ? 'var(--blue)' : 'var(--gray)' }}>
+                            {fmt(partialPaid)}
                           </div>
-                          <div className="cell-amt" style={{ color: m.dues === 'paid' ? 'var(--gray)' : m.dues === 'overdue' ? 'var(--red-text)' : 'var(--navy)' }}>
-                            {m.dues === 'paid' ? '—' : fmt(remaining)}
+                          <div className="cell-amt" style={{ color: duesStatus === 'paid' ? 'var(--gray)' : duesStatus === 'overdue' ? 'var(--red-text)' : 'var(--navy)' }}>
+                            {duesStatus === 'paid' ? '—' : fmt(remaining)}
                           </div>
-                          <div><StatusPill status={m.dues} /></div>
+                          <div><StatusPill status={duesStatus} /></div>
                           <div className="action-btns">
-                            {m.dues !== 'paid' && (
+                            {duesStatus !== 'paid' && (
                               <>
                                 <button className="ab ab-paid" onClick={() => markDuesPaid(m.id)}>✓ Mark Paid</button>
                                 <button className="ab ab-partial" onClick={() => { setLpModal({ id: m.id, name: m.name }); setLpAmount(''); }}>Log Payment</button>
@@ -404,7 +522,7 @@ export default function MembersPage() {
                     <div className="reminder-section">
                       <div className="reminder-sub">{overdueCt} members are overdue. Send automated reminder emails in one click.</div>
                       <div className="overdue-list">
-                        {members.filter(m => m.dues === 'overdue').map(m => (
+                        {members.filter(m => getMemberDuesStatus(m.id) === 'overdue').map(m => (
                           <div key={m.id} className="overdue-member">
                             <div className="overdue-av" style={{ background: m.color }}>{initials(m.name)}</div>
                             <div className="overdue-name">{m.name}</div>
@@ -560,7 +678,7 @@ export default function MembersPage() {
               autoFocus
             />
             <div className="modal-hint">
-              Remaining balance: {fmt(DUES_AMOUNT - ((members.find(m => m.id === lpModal.id)?.partialPaid) || 0))} of {fmt(DUES_AMOUNT)}
+              Remaining balance: {fmt(getMemberDuesOwed(lpModal.id) - getMemberPartialPaid(lpModal.id))} of {fmt(getMemberDuesOwed(lpModal.id))}
             </div>
             <div className="modal-footer">
               <button className="btn-outline" onClick={() => setLpModal(null)}>Cancel</button>
@@ -701,5 +819,6 @@ export default function MembersPage() {
         </div>
       )}
     </div>
+    </ProtectedRoute>
   );
 }
