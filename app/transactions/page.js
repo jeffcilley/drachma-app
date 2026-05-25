@@ -620,8 +620,13 @@ export default function TransactionsPage() {
     showToast(`"${tx.desc}" duplicated`);
   }
 
-  function handleInlineCatChange(txId, catId) {
-    setTransactions(prev => prev.map(t => t.id !== txId ? t : { ...t, cat: catId }));
+  async function handleInlineCatChange(txId, catId) {
+    const categoryId = catId !== 'other' ? parseInt(catId) : null;
+    await supabase
+      .from('transactions')
+      .update({ category_id: categoryId })
+      .eq('id', txId);
+    setTransactions(prev => prev.map(t => t.id !== txId ? t : { ...t, cat: catId, category_id: categoryId }));
     setInlineCat({ txId: null, rect: null });
     showToast('Category updated');
   }

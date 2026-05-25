@@ -43,7 +43,11 @@ export default function MembersPage() {
   const [finesFilter, setFinesFilter]   = useState('Unpaid');
   const [search, setSearch]             = useState('');
   const [addMemberModal, setAddMemberModal] = useState(false);
-  const [newMember, setNewMember]       = useState({ name: '', email: '', cls: 'Freshman', pledge: '' });
+  const [newMember, setNewMember]       = useState({ name: '', email: '', cls: 'Freshman', pledge: '', tierId: '' });
+  const [editDuesModal, setEditDuesModal] = useState(null);
+  const [editDuesAmount, setEditDuesAmount] = useState('');
+  const [drawerFineForm, setDrawerFineForm] = useState({ reason: '', amount: '' });
+  const [drawerFinePreset, setDrawerFinePreset] = useState(null);
 
   // ── FETCH DATA ─────────────────────────────────────────────
   useEffect(() => {
@@ -92,13 +96,14 @@ export default function MembersPage() {
 
     if (data) {
       // Create dues payment record
-      if (duesTiers.length > 0) {
+      const selectedTier = duesTiers.find(t => t.id === parseInt(newMember.tierId)) || duesTiers[0];
+      if (selectedTier) {
         await supabase.from('dues_payments').insert({
           chapter_id: dbUser.chapter_id,
           member_id: data.id,
-          tier_id: duesTiers[0].id,
+          tier_id: selectedTier.id,
           semester: SEMESTER,
-          amount_owed: duesTiers[0].amount,
+          amount_owed: selectedTier.amount,
           amount_paid: 0,
           status: 'outstanding',
         });
@@ -140,18 +145,19 @@ export default function MembersPage() {
 
   // ── DUES STATS ─────────────────────────────────────────────
   const DUES_AMOUNT   = duesTiers.length > 0 ? Number(duesTiers[0].amount) : 300;
-  const collectedAmt  = dues.filter(d => d.semester === SEMESTER).reduce((s, d) => s + (Number(d.amount_paid) || 0), 0);
-  const outstandingCt = dues.filter(d => d.semester === SEMESTER && d.status === 'outstanding').length;
-  const overdueCt     = dues.filter(d => d.semester === SEMESTER && d.status === 'overdue').length;
-  const paidCt        = dues.filter(d => d.semester === SEMESTER && d.status === 'paid').length;
-  const totalExpected = members.length * DUES_AMOUNT;
+  const semesterDues  = dues.filter(d => d.semester === SEMESTER);
+  const collectedAmt  = semesterDues.reduce((s, d) => s + (Number(d.amount_paid) || 0), 0);
+  const outstandingCt = semesterDues.filter(d => d.status === 'outstanding').length;
+  const overdueCt     = semesterDues.filter(d => d.status === 'overdue').length;
+  const paidCt        = semesterDues.filter(d => d.status === 'paid').length;
+  const totalExpected = semesterDues.reduce((s, d) => s + (Number(d.amount_owed) || 0), 0);
   const pct           = totalExpected > 0 ? Math.round(collectedAmt / totalExpected * 100) : 0;
 
   // ── FINES STATS ────────────────────────────────────────────
   const finesOutstanding = fines.filter(f => !f.paid).reduce((s, f) => s + f.amt, 0);
   const finesCollected   = fines.filter(f =>  f.paid).reduce((s, f) => s + f.amt, 0);
   const finesTotal       = fines.reduce((s, f) => s + f.amt, 0);
-  const membersFined     = new Set(fines.map(f => f.memberId)).size;
+  const membersFined     = new Set(fines.map(f => f.member_id)).size;
 
   // ── MARK DUES PAID ─────────────────────────────────────────
   async function markDuesPaid(id) {
@@ -167,12 +173,20 @@ export default function MembersPage() {
     }
 
     // Auto-create income transaction
+    const { data: duesCat } = await supabase
+      .from('budget_categories')
+      .select('id')
+      .eq('chapter_id', dbUser.chapter_id)
+      .ilike('name', 'dues collected')
+      .single();
+
     await supabase.from('transactions').insert({
       chapter_id: dbUser.chapter_id,
       date: new Date().toISOString().split('T')[0],
       description: `Dues Payment — ${member.name}`,
       amount: DUES_AMOUNT,
       type: 'income',
+      category_id: duesCat?.id || null,
       verified: true,
       notes: `${SEMESTER} dues`,
     });
@@ -189,7 +203,8 @@ export default function MembersPage() {
     const duesRecord = getMemberDues(lpModal.id);
     const newPaid = getMemberPartialPaid(lpModal.id) + amount;
 
-    if (newPaid >= DUES_AMOUNT) {
+    const amountOwed = getMemberDuesOwed(lpModal.id);
+    if (newPaid >= amountOwed) {
       setLpModal(null); setLpAmount('');
       markDuesPaid(lpModal.id);
       return;
@@ -203,12 +218,20 @@ export default function MembersPage() {
     }
 
     // Auto-create income transaction for partial payment
+    const { data: duesCat } = await supabase
+      .from('budget_categories')
+      .select('id')
+      .eq('chapter_id', dbUser.chapter_id)
+      .ilike('name', 'dues collected')
+      .single();
+
     await supabase.from('transactions').insert({
       chapter_id: dbUser.chapter_id,
       date: new Date().toISOString().split('T')[0],
       description: `Partial Dues Payment — ${member.name}`,
       amount: amount,
       type: 'income',
+      category_id: duesCat?.id || null,
       verified: true,
       notes: `${SEMESTER} dues — ${fmt(newPaid)} of ${fmt(DUES_AMOUNT)} paid`,
     });
@@ -262,11 +285,11 @@ export default function MembersPage() {
   }
 
   // ── BULK ACTIONS ───────────────────────────────────────────
-  function bulkMarkPaid() {
-    selectedIds.forEach(id => {
-      const m = members.find(m => m.id === id);
-      if (m && m.dues !== 'paid') markDuesPaid(id);
-    });
+  async function bulkMarkPaid() {
+    for (const id of selectedIds) {
+      const status = getMemberDuesStatus(id);
+      if (status !== 'paid') await markDuesPaid(id);
+    }
     setSelectedIds(new Set());
   }
 
@@ -276,6 +299,25 @@ export default function MembersPage() {
       if (f && !f.paid) markFinePaid(fineId);
     });
     setSelectedIds(new Set());
+  }
+
+  async function saveEditDues() {
+    const amount = parseFloat(editDuesAmount);
+    if (!amount || amount <= 0) return;
+    const duesRecord = getMemberDues(editDuesModal.id);
+    if (duesRecord) {
+      const currentPaid = Number(duesRecord.amount_paid) || 0;
+      const newStatus = currentPaid >= amount ? 'paid' : currentPaid > 0 ? 'outstanding' : duesRecord.status;
+      const { error } = await supabase.from('dues_payments').update({
+        amount_owed: amount,
+        status: newStatus,
+      }).eq('id', duesRecord.id);
+      if (!error) {
+        setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, amount_owed: amount, status: newStatus } : d));
+        showToast(`Dues updated to ${fmt(amount)} for ${editDuesModal.name}`);
+        setEditDuesModal(null);
+      }
+    }
   }
 
   function toggleSelect(id) {
@@ -361,18 +403,18 @@ export default function MembersPage() {
                 </div>
                 <div className="stat-card gold">
                   <div className="stat-label">Outstanding</div>
-                  <div className="stat-value">{fmt(outstandingCt * DUES_AMOUNT)}</div>
+                  <div className="stat-value">{fmt(semesterDues.filter(d => d.status === 'outstanding').reduce((s, d) => s + (Number(d.amount_owed) - Number(d.amount_paid || 0)), 0))}</div>
                   <div className="stat-sub">{outstandingCt} members outstanding</div>
                 </div>
                 <div className="stat-card red">
                   <div className="stat-label">Overdue</div>
-                  <div className="stat-value">{fmt(overdueCt * DUES_AMOUNT)}</div>
+                  <div className="stat-value">{fmt(semesterDues.filter(d => d.status === 'overdue').reduce((s, d) => s + (Number(d.amount_owed) - Number(d.amount_paid || 0)), 0))}</div>
                   <div className="stat-sub">{overdueCt} members overdue</div>
                 </div>
                 <div className="stat-card blue">
                   <div className="stat-label">Total Expected</div>
                   <div className="stat-value">{fmt(totalExpected)}</div>
-                  <div className="stat-sub">{members.length} members · {fmt(DUES_AMOUNT)} each</div>
+                  <div className="stat-sub">{members.length} members this semester</div>
                 </div>
               </div>
 
@@ -405,11 +447,11 @@ export default function MembersPage() {
                     </div>
                   )}
 
-                  {/* Table header */}
-                  <div className="table-header dues-cols">
+                  {/* Table header + body scroll wrapper */}
+                  <div style={{ overflowX: 'auto', flex: 1 }}>
+                  <div className="table-header dues-cols" style={{ minWidth: 620 }}>
                     <div className="th" />
                     <div className="th">Member</div>
-                    <div className="th">Class</div>
                     <div className="th">Paid So Far</div>
                     <div className="th">Remaining</div>
                     <div className="th">Status</div>
@@ -437,7 +479,6 @@ export default function MembersPage() {
                               <div className="member-email">{m.email}</div>
                             </div>
                           </div>
-                          <div className="cell">{m.cls}</div>
                           <div className="cell-amt" style={{ color: duesStatus === 'paid' ? 'var(--green-text)' : partialPaid > 0 ? 'var(--blue)' : 'var(--gray)' }}>
                             {fmt(partialPaid)}
                           </div>
@@ -450,9 +491,34 @@ export default function MembersPage() {
                               <>
                                 <button className="ab ab-paid" onClick={() => markDuesPaid(m.id)}>✓ Mark Paid</button>
                                 <button className="ab ab-partial" onClick={() => { setLpModal({ id: m.id, name: m.name }); setLpAmount(''); }}>Log Payment</button>
-                                <button className="ab ab-remind">Remind</button>
+                                {duesStatus === 'outstanding' && (
+                                  <button className="ab" style={{ borderColor: 'rgba(224,92,92,0.4)', color: '#c03c3c', background: '#fde8e8' }}
+                                    onClick={async () => {
+                                      const duesRecord = getMemberDues(m.id);
+                                      if (duesRecord) {
+                                        await supabase.from('dues_payments').update({ status: 'overdue' }).eq('id', duesRecord.id);
+                                        setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, status: 'overdue' } : d));
+                                        showToast(`${m.name} marked overdue`);
+                                      }
+                                    }}
+                                  >Mark Overdue</button>
+                                )}
+                                {duesStatus === 'overdue' && (
+                                  <button className="ab" style={{ borderColor: 'rgba(201,168,76,0.4)', color: '#8b6914', background: '#fdf8ee' }}
+                                    onClick={async () => {
+                                      const duesRecord = getMemberDues(m.id);
+                                      if (duesRecord) {
+                                        await supabase.from('dues_payments').update({ status: 'outstanding' }).eq('id', duesRecord.id);
+                                        setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, status: 'outstanding' } : d));
+                                        showToast(`${m.name} moved back to outstanding`);
+                                      }
+                                    }}
+                                  >Undo Overdue</button>
+                                )}
+                                {/* Remind button — enabled when SendGrid is wired up */}
                               </>
                             )}
+                            <button className="ab" onClick={() => { setEditDuesModal({ id: m.id, name: m.name }); setEditDuesAmount(String(getMemberDuesOwed(m.id))); }}>Edit Dues</button>
                             <button className="ab" onClick={() => setDrawer(m.id)}>View</button>
                           </div>
                         </div>
@@ -461,6 +527,7 @@ export default function MembersPage() {
                     <div className="roster-footer">
                       Showing {filteredMembers.length} of {members.length} members
                     </div>
+                  </div>
                   </div>
                 </div>
 
@@ -483,11 +550,11 @@ export default function MembersPage() {
                         </div>
                         <div className="breakdown-row">
                           <div className="breakdown-label"><div className="breakdown-dot" style={{ background: 'var(--gold)' }} />Outstanding</div>
-                          <div><div className="breakdown-val">{fmt(outstandingCt * DUES_AMOUNT)}</div><div className="breakdown-count">{outstandingCt} members</div></div>
+                          <div><div className="breakdown-val">{fmt(semesterDues.filter(d => d.status === 'outstanding').reduce((s, d) => s + (Number(d.amount_owed) - Number(d.amount_paid || 0)), 0))}</div><div className="breakdown-count">{outstandingCt} members</div></div>
                         </div>
                         <div className="breakdown-row">
                           <div className="breakdown-label"><div className="breakdown-dot" style={{ background: 'var(--red)' }} />Overdue</div>
-                          <div><div className="breakdown-val" style={{ color: 'var(--red-text)' }}>{fmt(overdueCt * DUES_AMOUNT)}</div><div className="breakdown-count">{overdueCt} members</div></div>
+                          <div><div className="breakdown-val" style={{ color: 'var(--red-text)' }}>{fmt(semesterDues.filter(d => d.status === 'overdue').reduce((s, d) => s + (Number(d.amount_owed) - Number(d.amount_paid || 0)), 0))}</div><div className="breakdown-count">{overdueCt} members</div></div>
                         </div>
                       </div>
                     </div>
@@ -694,8 +761,9 @@ export default function MembersPage() {
           <div className="drawer-overlay" onClick={() => setDrawer(null)} />
           <div className="member-drawer">
             {drawerMember && (() => {
-              const totalIssued = drawerMember.fines.reduce((s, f) => s + f.amt, 0);
-              const totalPaid   = drawerMember.fines.filter(f => f.paid).reduce((s, f) => s + f.amt, 0);
+              const memberFines = fines.filter(f => f.member_id === drawerMember.id);
+              const totalIssued = memberFines.reduce((s, f) => s + f.amt, 0);
+              const totalPaid   = memberFines.filter(f => f.paid).reduce((s, f) => s + f.amt, 0);
               const totalOwed   = totalIssued - totalPaid;
               return (
                 <>
@@ -708,8 +776,8 @@ export default function MembersPage() {
                         <div className="drawer-name">{drawerMember.name}</div>
                         <div className="drawer-email">{drawerMember.email}</div>
                         <div className="drawer-meta">
-                          <span className="drawer-tag">{drawerMember.cls}</span>
-                          <span className="drawer-tag">Pledged {drawerMember.pledge}</span>
+                          <span className="drawer-tag">{drawerMember.status || 'Active'}</span>
+                          <span className="drawer-tag">Pledged {drawerMember.pledge_class || ''}</span>
                         </div>
                       </div>
                     </div>
@@ -718,18 +786,31 @@ export default function MembersPage() {
                   <div className="drawer-body">
                     <div className="drawer-section">
                       <div className="drawer-section-title">Dues — Spring 2025</div>
-                      <div className="drawer-dues-row">
-                        <StatusPill status={drawerMember.dues} />
-                        <div style={{ textAlign: 'right' }}>
-                          <div className="drawer-dues-amount">{fmt(DUES_AMOUNT)}</div>
-                          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>Due Feb 1, 2025</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <StatusPill status={getMemberDuesStatus(drawerMember.id)} />
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a' }}>
+                            {fmt(getMemberDuesOwed(drawerMember.id))} total
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                          {[
+                            { label: 'Paid', value: fmt(getMemberPartialPaid(drawerMember.id)), color: '#1a7a52' },
+                            { label: 'Remaining', value: fmt(Math.max(0, getMemberDuesOwed(drawerMember.id) - getMemberPartialPaid(drawerMember.id))), color: getMemberDuesStatus(drawerMember.id) === 'paid' ? '#8a97a8' : '#c03c3c' },
+                            { label: 'Total Owed', value: fmt(getMemberDuesOwed(drawerMember.id)), color: '#0d1b2a' },
+                          ].map(s => (
+                            <div key={s.label} style={{ background: '#f8f9fb', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{s.value}</div>
+                              <div style={{ fontSize: 10, color: '#8a97a8', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
                     <div className="drawer-section">
                       <div className="drawer-section-title" style={{ marginBottom: 12 }}>Fines — Spring 2025</div>
                       <div className="drawer-fine-stats">
-                        {[['Fines', drawerMember.fines.length],['Issued', fmt(totalIssued)],['Paid', fmt(totalPaid)],['Owed', totalOwed > 0 ? fmt(totalOwed) : '—']].map(([lbl, val]) => (
+                        {[['Fines', memberFines.length],['Issued', fmt(totalIssued)],['Paid', fmt(totalPaid)],['Owed', totalOwed > 0 ? fmt(totalOwed) : '—']].map(([lbl, val]) => (
                           <div key={lbl} className="drawer-fine-stat">
                             <div className="drawer-fine-stat-val" style={{ color: lbl === 'Owed' && totalOwed > 0 ? 'var(--fine-text)' : 'var(--navy)' }}>{val}</div>
                             <div className="drawer-fine-stat-lbl">{lbl}</div>
@@ -739,9 +820,9 @@ export default function MembersPage() {
                     </div>
                     <div className="drawer-section" style={{ borderBottom: 'none' }}>
                       <div className="drawer-section-title">Fine History</div>
-                      {drawerMember.fines.length === 0
+                      {memberFines.length === 0
                         ? <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--gray)' }}>No fines this semester 🎉</div>
-                        : drawerMember.fines.map((f, i) => (
+                        : memberFines.map((f, i) => (
                           <div key={i} className="drawer-fine-row">
                             <div style={{ flex: 1 }}>
                               <div className="drawer-fine-reason">{f.reason}</div>
@@ -756,9 +837,67 @@ export default function MembersPage() {
                       }
                     </div>
                   </div>
+                  {drawerFineForm.open && (
+                    <div style={{ padding: '14px 20px', borderTop: '1px solid #eef0f4', background: '#fdf8ee' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#0d1b2a', marginBottom: 10 }}>Issue Fine for {drawerMember.name}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                        {[['Missed Chapter',25],['Dress Code',10],['Late Dues',15],['No Show',50]].map(([reason, amt]) => (
+                          <span
+                            key={reason}
+                            onClick={() => { setDrawerFinePreset(reason); setDrawerFineForm(f => ({ ...f, reason, amount: String(amt) })); }}
+                            style={{ padding: '4px 10px', borderRadius: 100, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: drawerFinePreset === reason ? '#0d1b2a' : '#eef0f4', color: drawerFinePreset === reason ? '#ffffff' : '#0d1b2a' }}
+                          >{reason} ${amt}</span>
+                        ))}
+                      </div>
+                      <input
+                        className="modal-input"
+                        placeholder="Reason"
+                        value={drawerFineForm.reason}
+                        onChange={e => setDrawerFineForm(f => ({ ...f, reason: e.target.value }))}
+                        style={{ marginBottom: 8, width: '100%', boxSizing: 'border-box' }}
+                      />
+                      <input
+                        className="modal-input"
+                        type="number"
+                        placeholder="Amount ($)"
+                        value={drawerFineForm.amount}
+                        onChange={e => setDrawerFineForm(f => ({ ...f, amount: e.target.value }))}
+                        style={{ marginBottom: 8, width: '100%', boxSizing: 'border-box' }}
+                      />
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button className="btn-outline" onClick={() => { setDrawerFineForm({ reason: '', amount: '', open: false }); setDrawerFinePreset(null); }}>Cancel</button>
+                        <button className="btn" onClick={async () => {
+                          if (!drawerFineForm.reason || !drawerFineForm.amount) return;
+                          const { data } = await supabase.from('fines').insert({
+                            chapter_id: dbUser.chapter_id,
+                            member_id: drawerMember.id,
+                            reason: drawerFineForm.reason,
+                            amount: parseFloat(drawerFineForm.amount),
+                            paid: false,
+                          }).select().single();
+                          if (data) {
+                            setDrawerFineForm({ reason: '', amount: '', open: false });
+                            setDrawerFinePreset(null);
+                            showToast(`Fine issued for ${drawerMember.name}`);
+                            fetchData();
+                          }
+                        }}>Issue Fine</button>
+                      </div>
+                    </div>
+                  )}
                   <div className="drawer-footer">
-                    <button className="drawer-btn secondary" onClick={() => setDrawer(null)}>Close</button>
-                    <button className="drawer-btn fine-btn">+ Issue Fine</button>
+                    <button
+                      className="drawer-btn"
+                      style={{ background: '#fde8e8', color: '#c03c3c', border: '1px solid rgba(224,92,92,0.3)' }}
+                      onClick={async () => {
+                        if (!confirm(`Remove ${drawerMember.name} from the chapter roster? This cannot be undone.`)) return;
+                        await supabase.from('members').delete().eq('id', drawerMember.id);
+                        setDrawer(null);
+                        showToast(`${drawerMember.name} removed from roster`);
+                        fetchData();
+                      }}
+                    >Remove Member</button>
+                    <button className="drawer-btn fine-btn" onClick={() => setDrawerFineForm(f => ({ ...f, open: !f.open }))}>+ Issue Fine</button>
                     <button className="drawer-btn primary">Send Reminder</button>
                   </div>
                 </>
@@ -796,10 +935,44 @@ export default function MembersPage() {
                 <div className="field-label">Pledge Class</div>
                 <input className="modal-input" placeholder="e.g. Fall 2024" value={newMember.pledge} onChange={e => setNewMember(m => ({ ...m, pledge: e.target.value }))} />
               </div>
+              {duesTiers.length > 0 && (
+                <div className="modal-field">
+                  <div className="field-label">Dues Tier</div>
+                  <select className="modal-input" value={newMember.tierId} onChange={e => setNewMember(m => ({ ...m, tierId: e.target.value }))}>
+                    <option value="">Select tier (defaults to first)...</option>
+                    {duesTiers.map(t => (
+                      <option key={t.id} value={t.id}>{t.name} — ${t.amount}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn-outline" onClick={() => setAddMemberModal(false)}>Cancel</button>
               <button className="btn" onClick={addMember}>Add Member</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT DUES MODAL */}
+      {editDuesModal && (
+        <div className="modal-overlay" onClick={() => setEditDuesModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Edit Dues Amount</div>
+            <div className="modal-sub">Override dues amount for {editDuesModal.name}</div>
+            <div className="field-label">Dues Amount ($)</div>
+            <input
+              className="modal-input"
+              type="number"
+              value={editDuesAmount}
+              onChange={e => setEditDuesAmount(e.target.value)}
+              autoFocus
+            />
+            <div className="modal-hint">Current amount: {fmt(getMemberDuesOwed(editDuesModal.id))}</div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setEditDuesModal(null)}>Cancel</button>
+              <button className="btn" onClick={saveEditDues}>Save Changes</button>
             </div>
           </div>
         </div>
