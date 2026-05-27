@@ -50,26 +50,20 @@ function highlightText(text, search) {
 }
 
 function computeBalanceMap(transactions) {
-  // Sort oldest to newest by date, then by id as tiebreaker
+  // Sort oldest to newest by id as tiebreaker for same-date transactions
   const sorted = [...transactions].sort((a, b) => {
     if (a.date < b.date) return -1;
     if (a.date > b.date) return 1;
     return a.id - b.id;
   });
 
-  // Accumulate balance
+  // True running balance — each transaction gets its own unique balance
   let bal = 0;
-  const rawBal = {};
+  const balMap = {};
   sorted.forEach(tx => {
     bal += tx.type === 'income' ? tx.amount : -tx.amount;
-    rawBal[tx.id] = bal;
+    balMap[tx.id] = bal;
   });
-
-  // Group by date — all same-date transactions get the LAST balance of that date
-  const dateGroups = {};
-  sorted.forEach(tx => { dateGroups[tx.date] = rawBal[tx.id]; });
-  const balMap = {};
-  sorted.forEach(tx => { balMap[tx.id] = dateGroups[tx.date]; });
 
   return balMap;
 }
