@@ -44,6 +44,7 @@ export default function MembersPage() {
   const [search, setSearch]             = useState('');
   const [addMemberModal, setAddMemberModal] = useState(false);
   const [newMember, setNewMember]       = useState({ name: '', email: '', cls: 'Freshman', pledge: '', tierId: '' });
+  const [showDropped, setShowDropped]   = useState(false);
   const [editDuesModal, setEditDuesModal] = useState(null);
   const [editDuesAmount, setEditDuesAmount] = useState('');
   const [drawerFineForm, setDrawerFineForm] = useState({ reason: '', amount: '' });
@@ -145,13 +146,24 @@ export default function MembersPage() {
 
   // ── DUES STATS ─────────────────────────────────────────────
   const DUES_AMOUNT   = duesTiers.length > 0 ? Number(duesTiers[0].amount) : 300;
+  const activeMembers = members.filter(m => m.status !== 'dropped');
   const semesterDues  = dues.filter(d => d.semester === SEMESTER);
+  const activeSemesterDues = semesterDues.filter(d => activeMembers.some(m => m.id === d.member_id));
   const collectedAmt  = semesterDues.reduce((s, d) => s + (Number(d.amount_paid) || 0), 0);
-  const outstandingCt = semesterDues.filter(d => d.status === 'outstanding').length;
-  const overdueCt     = semesterDues.filter(d => d.status === 'overdue').length;
-  const paidCt        = semesterDues.filter(d => d.status === 'paid').length;
-  const totalExpected = semesterDues.reduce((s, d) => s + (Number(d.amount_owed) || 0), 0);
+  const outstandingCt = activeSemesterDues.filter(d => d.status === 'outstanding').length;
+  const overdueCt     = activeSemesterDues.filter(d => d.status === 'overdue').length;
+  const paidCt        = activeSemesterDues.filter(d => d.status === 'paid').length;
+  const totalExpected = semesterDues.reduce((s, d) => {
+    const member = members.find(m => m.id === d.member_id);
+    const isDropped = member?.status === 'dropped';
+    if (isDropped) {
+      // Only include what they've already paid
+      return s + (Number(d.amount_paid) || 0);
+    }
+    return s + (Number(d.amount_owed) || 0);
+  }, 0);
   const pct           = totalExpected > 0 ? Math.round(collectedAmt / totalExpected * 100) : 0;
+  const droppedCount  = members.filter(m => m.status === 'dropped').length;
 
   // ── FINES STATS ────────────────────────────────────────────
   const finesOutstanding = fines.filter(f => !f.paid).reduce((s, f) => s + f.amt, 0);
@@ -332,7 +344,8 @@ export default function MembersPage() {
   const filteredMembers = members.filter(m => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase());
     const matchFilter = duesFilter === 'All' || getMemberDuesStatus(m.id) === duesFilter.toLowerCase();
-    return matchSearch && matchFilter;
+    const matchDropped = showDropped ? true : m.status !== 'dropped';
+    return matchSearch && matchFilter && matchDropped;
   });
 
   const filteredFines = fines.filter(f => {
@@ -369,7 +382,7 @@ export default function MembersPage() {
             <div className="topbar-title">Members &amp; Dues</div>
             <div className="topbar-sub">
               {activeTab === 'dues'
-                ? `Spring 2025 · ${members.length} members · ${fmt(DUES_AMOUNT)} dues per member`
+                ? `${SEMESTER} · ${activeMembers.length} active members · ${fmt(DUES_AMOUNT)} dues per member`
                 : `Spring 2025 · ${fmt(finesOutstanding)} outstanding · ${fines.filter(f => !f.paid).length} open fines`}
             </div>
           </div>
@@ -433,6 +446,12 @@ export default function MembersPage() {
                           <button key={f} className={`filter-tab ${duesFilter === f ? 'active' : ''}`} onClick={() => setDuesFilter(f)}>{f}</button>
                         ))}
                       </div>
+                      {droppedCount > 0 && (
+                        <button
+                          onClick={() => setShowDropped(o => !o)}
+                          style={{ padding: '5px 10px', borderRadius: 100, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: '1px solid #dce3eb', background: showDropped ? '#0d1b2a' : 'transparent', color: showDropped ? '#ffffff' : '#8a97a8', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        >{showDropped ? 'Hide Dropped' : `Show Dropped (${droppedCount})`}</button>
+                      )}
                     </div>
                   </div>
 
@@ -466,7 +485,7 @@ export default function MembersPage() {
                       const remaining = getMemberDuesOwed(m.id) - partialPaid;
                       const isSelected = selectedIds.has(m.id);
                       return (
-                        <div key={m.id} className={`member-row dues-cols ${isSelected ? 'selected' : ''}`}>
+                        <div key={m.id} className={`member-row dues-cols ${isSelected ? 'selected' : ''}`} style={{ opacity: m.status === 'dropped' ? 0.5 : 1 }}>
                           <div className="row-check">
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(m.id)} />
                           </div>
@@ -475,7 +494,10 @@ export default function MembersPage() {
                               {initials(m.name)}
                             </div>
                             <div style={{ minWidth: 0 }}>
-                              <div className="member-name">{m.name}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div className="member-name">{m.name}</div>
+                                {m.status === 'dropped' && <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 100, background: '#fde8e8', color: '#c03c3c', border: '1px solid rgba(224,92,92,0.2)' }}>DROPPED</span>}
+                              </div>
                               <div className="member-email">{m.email}</div>
                             </div>
                           </div>
@@ -714,7 +736,7 @@ export default function MembersPage() {
                       <div className="fine-form">
                         <select value={fineForm.member} onChange={e => setFineForm(f => ({ ...f, member: e.target.value }))}>
                           <option value="">Select member...</option>
-                          {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                          {members.filter(m => m.status !== 'dropped').map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                         </select>
                         <input type="text" placeholder="Reason" value={fineForm.reason} onChange={e => setFineForm(f => ({ ...f, reason: e.target.value }))} />
                         <input type="number" placeholder="Amount ($)" value={fineForm.amount} onChange={e => setFineForm(f => ({ ...f, amount: e.target.value }))} />
@@ -888,15 +910,25 @@ export default function MembersPage() {
                   <div className="drawer-footer">
                     <button
                       className="drawer-btn"
-                      style={{ background: '#fde8e8', color: '#c03c3c', border: '1px solid rgba(224,92,92,0.3)' }}
+                      style={drawerMember.status === 'dropped'
+                        ? { background: '#e8f5ee', color: '#1a7a52', border: '1px solid rgba(46,204,138,0.3)' }
+                        : { background: '#fde8e8', color: '#c03c3c', border: '1px solid rgba(224,92,92,0.3)' }
+                      }
                       onClick={async () => {
-                        if (!confirm(`Remove ${drawerMember.name} from the chapter roster? This cannot be undone.`)) return;
-                        await supabase.from('members').delete().eq('id', drawerMember.id);
-                        setDrawer(null);
-                        showToast(`${drawerMember.name} removed from roster`);
-                        fetchData();
+                        if (drawerMember.status === 'dropped') {
+                          await supabase.from('members').update({ status: 'active' }).eq('id', drawerMember.id);
+                          setDrawer(null);
+                          showToast(`${drawerMember.name} reinstated`);
+                          fetchData();
+                        } else {
+                          if (!confirm(`Mark ${drawerMember.name} as dropped? They will be greyed out on the roster but their payment history will be preserved.`)) return;
+                          await supabase.from('members').update({ status: 'dropped' }).eq('id', drawerMember.id);
+                          setDrawer(null);
+                          showToast(`${drawerMember.name} marked as dropped`);
+                          fetchData();
+                        }
                       }}
-                    >Remove Member</button>
+                    >{drawerMember.status === 'dropped' ? 'Reinstate Member' : 'Mark as Dropped'}</button>
                     <button className="drawer-btn fine-btn" onClick={() => setDrawerFineForm(f => ({ ...f, open: !f.open }))}>+ Issue Fine</button>
                     <button className="drawer-btn primary">Send Reminder</button>
                   </div>

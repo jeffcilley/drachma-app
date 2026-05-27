@@ -115,7 +115,7 @@ body {
 .filter-tab.active { background: var(--navy); color: var(--white); border-color: var(--navy); }
 
 /* ── TABLE ──────────────────────────────────────────────────── */
-.dues-cols  { grid-template-columns: 40px minmax(150px, 1fr) 100px 100px 115px 155px; min-width: 620px; }
+.dues-cols  { grid-template-columns: 40px 240px 100px 100px 115px 220px; }
 .fines-cols { grid-template-columns: 40px 1.3fr 1.1fr 0.55fr 0.65fr 110px; }
 
 .table-header { display: grid; padding: 9px 20px 9px 0; background: var(--bg); border-bottom: 1px solid var(--gray-light); flex-shrink: 0; }
