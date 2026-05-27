@@ -101,15 +101,8 @@ export default function BudgetPage() {
   const [view, setView]                 = useState('budget'); // 'budget' | 'collections'
 
   // ── COLLECTIONS STATE ──────────────────────────────────────
-  const [duesTiers, setDuesTiers] = useState([
-    { id: 'tier-1', name: 'In-House',     amount: 450, members: 12 },
-    { id: 'tier-2', name: 'Out-of-House', amount: 300, members: 28 },
-    { id: 'tier-3', name: 'Senior Reduced', amount: 200, members: 6 },
-  ]);
-  const [otherIncome, setOtherIncome] = useState([
-    { id: 'oi-1', name: 'Alumni Donation', amount: 1500 },
-    { id: 'oi-2', name: 'Fundraiser',      amount: 800  },
-  ]);
+  const [duesTiers, setDuesTiers] = useState([]);
+  const [otherIncome, setOtherIncome] = useState([]);
   const [collectionRate, setCollectionRate] = useState(85);
   const [newTier, setNewTier] = useState({ name: '', amount: '', members: '' });
   const [showAddTier, setShowAddTier] = useState(false);
@@ -156,7 +149,7 @@ export default function BudgetPage() {
   async function fetchData() {
     setLoading(true);
 
-    const [catRes, lineRes, txRes, collRes] = await Promise.all([
+    const [catRes, lineRes, txRes, collRes, tiersRes] = await Promise.all([
       supabase
         .from('budget_categories')
         .select('*')
@@ -176,6 +169,11 @@ export default function BudgetPage() {
         .select('*')
         .eq('chapter_id', dbUser.chapter_id)
         .single(),
+      supabase
+        .from('dues_tiers')
+        .select('*')
+        .eq('chapter_id', dbUser.chapter_id)
+        .order('name'),
     ]);
 
     // Calculate spent amounts from transactions
@@ -215,6 +213,16 @@ export default function BudgetPage() {
       if (collRes.data.other_income) {
         setOtherIncome(collRes.data.other_income);
       }
+    }
+
+    // Load dues tiers
+    if (tiersRes.data) {
+      setDuesTiers(tiersRes.data.map(t => ({
+        id: t.id,
+        name: t.name,
+        amount: Number(t.amount),
+        members: t.members || 0,
+      })));
     }
 
     setLoading(false);
@@ -677,13 +685,13 @@ export default function BudgetPage() {
                           type={type}
                           value={editingTierValue}
                           onChange={e => setEditingTierValue(e.target.value)}
-                          onBlur={() => {
-                            setDuesTiers(prev => prev.map(t => t.id !== tier.id ? t : {
-                              ...t,
-                              [field]: type === 'number' ? parseFloat(editingTierValue) || t[field] : editingTierValue,
-                            }));
+                          onBlur={async () => {
+                            const newValue = type === 'number' ? parseFloat(editingTierValue) || tier[field] : editingTierValue;
+                            setDuesTiers(prev => prev.map(t => t.id !== tier.id ? t : { ...t, [field]: newValue }));
                             setEditingTierId(null);
                             setEditingTierField(null);
+                            const updateData = field === 'name' ? { name: newValue } : field === 'amount' ? { amount: newValue } : { members: newValue };
+                            await supabase.from('dues_tiers').update(updateData).eq('id', tier.id);
                           }}
                           onKeyDown={e => e.key === 'Enter' && e.target.blur()}
                           style={{ fontSize: 12, fontWeight: 500, color: '#0d1b2a', border: '1px solid #c9a84c', borderRadius: 6, padding: '4px 8px', outline: 'none', width: '100%', textAlign: align, fontFamily: 'inherit', background: '#fdf8ee' }}
@@ -705,11 +713,24 @@ export default function BudgetPage() {
                         <TierCell field="members" value={tier.members} type="number" align="center" />
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#1a7a52', textAlign: 'right' }}>{fmt(tier.amount * tier.members)}</div>
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             const deleted = tier;
                             setDuesTiers(prev => prev.filter(t => t.id !== tier.id));
-                            showToast(`"${deleted.name}" tier deleted — Undo`, () => {
-                              setDuesTiers(prev => [...prev, deleted]);
+                            await supabase.from('dues_tiers').delete().eq('id', tier.id);
+                            showToast(`"${deleted.name}" tier deleted — Undo`, async () => {
+                              const { data } = await supabase
+                                .from('dues_tiers')
+                                .insert({
+                                  chapter_id: dbUser.chapter_id,
+                                  name: deleted.name,
+                                  amount: deleted.amount,
+                                  semester: SEMESTER,
+                                })
+                                .select()
+                                .single();
+                              if (data) {
+                                setDuesTiers(prev => [...prev, { ...deleted, id: data.id }]);
+                              }
                             });
                           }}
                           style={{ background: 'none', border: 'none', color: '#e05c5c', cursor: 'pointer', fontSize: 14, padding: 0 }}
@@ -746,12 +767,29 @@ export default function BudgetPage() {
                       </div>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button style={S.btnOutline} onClick={() => { setShowAddTier(false); setNewTier({ name: '', amount: '', members: '' }); }}>Cancel</button>
-                        <button style={S.btn} onClick={() => {
-                          if (!newTier.name.trim() || !newTier.amount || !newTier.members) return;
-                          setDuesTiers(prev => [...prev, { id: 'tier-' + Date.now(), name: newTier.name.trim(), amount: parseFloat(newTier.amount), members: parseInt(newTier.members) }]);
-                          setNewTier({ name: '', amount: '', members: '' });
-                          setShowAddTier(false);
-                          showToast('Tier added');
+                        <button style={S.btn} onClick={async () => {
+                          if (!newTier.name.trim() || !newTier.amount) return;
+                          const { data, error } = await supabase
+                            .from('dues_tiers')
+                            .insert({
+                              chapter_id: dbUser.chapter_id,
+                              name: newTier.name.trim(),
+                              amount: parseFloat(newTier.amount),
+                              semester: SEMESTER,
+                            })
+                            .select()
+                            .single();
+                          if (data) {
+                            setDuesTiers(prev => [...prev, {
+                              id: data.id,
+                              name: data.name,
+                              amount: Number(data.amount),
+                              members: parseInt(newTier.members) || 0,
+                            }]);
+                            setNewTier({ name: '', amount: '', members: '' });
+                            setShowAddTier(false);
+                            showToast('Tier added');
+                          }
                         }}>Add Tier</button>
                       </div>
                     </div>
