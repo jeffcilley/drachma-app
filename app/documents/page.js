@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 // ── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -21,28 +24,7 @@ const CONTACT_CATEGORIES = [
   { id: 'other',     label: 'Other',            icon: '📞', color: '#8a97a8' },
 ];
 
-const INITIAL_DOCS = [
-  { id: 1,  name: 'Spring 2026 Budget Export',       desc: 'Full semester budget with all categories and line items', cat: 'financial', date: '2026-03-15', size: '245 KB' },
-  { id: 2,  name: 'Fall 2025 Transaction History',   desc: 'Complete transaction log for Fall 2025 semester',         cat: 'financial', date: '2026-01-10', size: '1.2 MB' },
-  { id: 3,  name: 'Spring 2025 Semester Report',     desc: 'End of semester financial summary and audit export',      cat: 'financial', date: '2025-06-01', size: '380 KB' },
-  { id: 4,  name: 'Chapter Financial Policy',        desc: 'Standing financial rules and spending approval process',  cat: 'policies',  date: '2025-08-20', size: '95 KB'  },
-  { id: 5,  name: 'Standing Rules — PKA Zeta Mu',    desc: 'Full chapter standing rules document',                   cat: 'policies',  date: '2025-08-20', size: '120 KB' },
-  { id: 6,  name: 'Expense Reimbursement Policy',    desc: 'How to submit and approve reimbursement requests',       cat: 'policies',  date: '2025-09-01', size: '45 KB'  },
-  { id: 7,  name: 'Grand Ballroom — Venue Contact',  desc: 'Contact sheet for Spring Formal venue',                  cat: 'vendors',   date: '2026-02-10', size: '12 KB'  },
-  { id: 8,  name: 'DJ Services — Preferred Vendors', desc: 'List of approved DJ vendors with pricing',              cat: 'vendors',   date: '2026-01-05', size: '18 KB'  },
-  { id: 9,  name: 'Chapter Bank — Contact Info',     desc: 'Bank branch address and account manager contact',        cat: 'access',    date: '2026-01-01', size: '8 KB'   },
-  { id: 10, name: 'GreekBill Account Reference',     desc: 'Account number and support contact for GreekBill',      cat: 'access',    date: '2026-01-01', size: '6 KB'   },
-  { id: 11, name: 'Nationals HQ Contact Sheet',      desc: 'Key contacts at national headquarters',                  cat: 'other',     date: '2025-09-15', size: '15 KB'  },
-];
-
-const INITIAL_CONTACTS = [
-  { id: 1, name: 'Sarah Mitchell',   role: 'Event Coordinator',     company: 'Grand Ballroom',        phone: '(208) 555-0142', email: 'sarah@grandballroom.com',    cat: 'vendor',    desc: 'Primary contact for Spring Formal venue bookings' },
-  { id: 2, name: 'DJ Mike Torres',   role: 'DJ / Entertainment',    company: 'MT Sound Productions',  phone: '(208) 555-0198', email: 'mike@mtsound.com',           cat: 'vendor',    desc: 'Preferred DJ for social events, books out early' },
-  { id: 3, name: 'Dr. James Wilson', role: 'Chapter Advisor',       company: 'University of Idaho',   phone: '(208) 555-0167', email: 'jwilson@uidaho.edu',         cat: 'university',desc: 'Faculty advisor, cc on all major financial decisions' },
-  { id: 4, name: 'Tom Bradley',      role: 'Greek Life Director',   company: 'University of Idaho',   phone: '(208) 555-0134', email: 'tbradley@uidaho.edu',        cat: 'university',desc: 'University Greek life office contact' },
-  { id: 5, name: 'Rick Harmon',      role: 'Field Director',        company: 'PKA National HQ',       phone: '(615) 555-0177', email: 'rharmon@pka.com',            cat: 'nationals', desc: 'Our assigned national field director' },
-  { id: 6, name: 'Dave Peterson',    role: 'Alumni Treasurer',      company: 'PKA Alumni Association',phone: '(208) 555-0155', email: 'dpeterson@alumni.pka.com',  cat: 'alumni',    desc: 'Alumni chapter treasurer, handles annual gift coordination' },
-];
+// Data now loaded from Supabase
 
 const HANDOFF_CHECKLIST = [
   { id: 'h1',  label: 'Export and save final semester budget' },
@@ -250,8 +232,10 @@ function SectionHeader({ title, count, color, isOpen, onToggle, action }) {
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
-  const [docs, setDocs] = useState(INITIAL_DOCS);
-  const [contacts, setContacts] = useState(INITIAL_CONTACTS);
+  const { dbUser } = useAuth();
+  const [docs, setDocs] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [checkedItems, setCheckedItems] = useState(new Set());
   const [handoffNotes, setHandoffNotes] = useState('');
   const [savedNotes, setSavedNotes] = useState([]);
@@ -264,13 +248,84 @@ export default function DocumentsPage() {
   const [toastCountdown, setToastCountdown] = useState(8);
   const toastTimerRef = useRef(null);
   const countdownRef = useRef(null);
-  const [nextDocId, setNextDocId] = useState(12);
-  const [nextContactId, setNextContactId] = useState(7);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [docsOpen, setDocsOpen] = useState(true);
   const [contactsOpen, setContactsOpen] = useState(true);
   const [openDocCats, setOpenDocCats] = useState(new Set(DOC_CATEGORIES.map(c => c.id)));
   const [openContactCats, setOpenContactCats] = useState(new Set(CONTACT_CATEGORIES.map(c => c.id)));
+
+  // ── FETCH DATA ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+    const [docsRes, contactsRes, notesRes] = await Promise.all([
+      supabase.from('documents').select('*').eq('chapter_id', dbUser.chapter_id).order('created_at', { ascending: false }),
+      supabase.from('contacts').select('*').eq('chapter_id', dbUser.chapter_id).order('name'),
+      supabase.from('handoff_notes').select('*').eq('chapter_id', dbUser.chapter_id).order('created_at', { ascending: false }),
+    ]);
+
+    if (docsRes.data) {
+      setDocs(docsRes.data.map(d => ({
+        id: d.id,
+        name: d.name,
+        desc: d.description || '',
+        cat: d.category,
+        date: d.created_at.split('T')[0],
+        size: d.file_size || '—',
+      })));
+    }
+
+    if (contactsRes.data) {
+      setContacts(contactsRes.data.map(c => ({
+        id: c.id,
+        name: c.name,
+        role: c.role || '',
+        company: c.company || '',
+        phone: c.phone || '',
+        email: c.email || '',
+        cat: c.category,
+        desc: c.description || '',
+      })));
+    }
+
+    if (notesRes.data) {
+      setSavedNotes(notesRes.data.map(n => ({
+        id: n.id,
+        text: n.note_text,
+        date: new Date(n.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      })));
+    }
+
+    // Load checklist state
+    const { data: checklistData } = await supabase
+      .from('handoff_checklist')
+      .select('item_id')
+      .eq('chapter_id', dbUser.chapter_id);
+
+    if (checklistData) {
+      setCheckedItems(new Set(checklistData.map(r => r.item_id)));
+    }
+
+    setLoading(false);
+  }
+
+  async function saveChecklist(newCheckedItems) {
+    await supabase.from('handoff_checklist')
+      .delete()
+      .eq('chapter_id', dbUser.chapter_id);
+
+    if (newCheckedItems.size > 0) {
+      await supabase.from('handoff_checklist')
+        .insert(Array.from(newCheckedItems).map(item_id => ({
+          chapter_id: dbUser.chapter_id,
+          item_id,
+        })));
+    }
+  }
 
   const checklistProgress = Math.round((checkedItems.size / HANDOFF_CHECKLIST.length) * 100);
 
@@ -279,35 +334,105 @@ export default function DocumentsPage() {
     setTimeout(() => setToast(''), 3000);
   }
 
-  function handleUpload(data) {
-    setDocs(prev => [{ ...data, id: nextDocId }, ...prev]);
-    setNextDocId(prev => prev + 1);
-    showToast('Document uploaded successfully');
+  async function handleUpload(data) {
+    const { data: newDoc, error } = await supabase
+      .from('documents')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        name: data.name,
+        description: data.desc,
+        category: data.cat,
+        file_size: '—',
+      })
+      .select()
+      .single();
+
+    if (newDoc) {
+      setDocs(prev => [{
+        id: newDoc.id,
+        name: newDoc.name,
+        desc: newDoc.description || '',
+        cat: newDoc.category,
+        date: newDoc.created_at.split('T')[0],
+        size: '—',
+      }, ...prev]);
+      showToast('Document uploaded successfully');
+    }
   }
 
-  function handleSaveContact(data) {
+  async function handleSaveContact(data) {
     if (editingContact) {
+      await supabase.from('contacts').update({
+        name: data.name,
+        role: data.role,
+        company: data.company,
+        phone: data.phone,
+        email: data.email,
+        category: data.cat,
+        description: data.desc,
+      }).eq('id', editingContact.id);
       setContacts(prev => prev.map(c => c.id === editingContact.id ? { ...data, id: editingContact.id } : c));
       showToast('Contact updated');
     } else {
-      setContacts(prev => [...prev, { ...data, id: nextContactId }]);
-      setNextContactId(prev => prev + 1);
-      showToast('Contact added');
+      const { data: newContact, error } = await supabase
+        .from('contacts')
+        .insert({
+          chapter_id: dbUser.chapter_id,
+          name: data.name,
+          role: data.role,
+          company: data.company,
+          phone: data.phone,
+          email: data.email,
+          category: data.cat,
+          description: data.desc,
+        })
+        .select()
+        .single();
+
+      if (newContact) {
+        setContacts(prev => [...prev, {
+          id: newContact.id,
+          name: newContact.name,
+          role: newContact.role || '',
+          company: newContact.company || '',
+          phone: newContact.phone || '',
+          email: newContact.email || '',
+          cat: newContact.category,
+          desc: newContact.description || '',
+        }]);
+        showToast('Contact added');
+      }
     }
     setEditingContact(null);
   }
 
-  function handleDeleteDoc(id) {
+  async function handleDeleteDoc(id) {
+    await supabase.from('documents').delete().eq('id', id);
     setDocs(prev => prev.filter(d => d.id !== id));
     setShowDeleteConfirm(null);
     showToast('Document deleted');
   }
 
-  function handleDeleteContact(id) {
+  async function handleDeleteContact(id) {
     const deleted = contacts.find(c => c.id === id);
     setContacts(prev => prev.filter(c => c.id !== id));
+    await supabase.from('contacts').delete().eq('id', id);
     setToast(`"${deleted.name}" deleted`);
-    setToastUndo(() => () => setContacts(prev => [...prev, deleted]));
+    setToastUndo(() => async () => {
+      const { data: restored } = await supabase.from('contacts').insert({
+        chapter_id: dbUser.chapter_id,
+        name: deleted.name,
+        role: deleted.role,
+        company: deleted.company,
+        phone: deleted.phone,
+        email: deleted.email,
+        category: deleted.cat,
+        description: deleted.desc,
+      }).select().single();
+      if (restored) {
+        setContacts(prev => [...prev, { ...deleted, id: restored.id }]);
+      }
+    });
     setToastCountdown(8);
     clearTimeout(toastTimerRef.current);
     clearInterval(countdownRef.current);
@@ -324,6 +449,7 @@ export default function DocumentsPage() {
     setCheckedItems(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      saveChecklist(next);
       return next;
     });
   }
@@ -344,7 +470,17 @@ export default function DocumentsPage() {
     });
   }
 
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading documents...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
       <Sidebar activePage="documents" />
 
@@ -543,13 +679,27 @@ export default function DocumentsPage() {
               />
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!handoffNotes.trim()) return;
-                    const newNote = { id: Date.now(), text: handoffNotes.trim(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) };
-                    setSavedNotes(prev => [newNote, ...prev]);
-                    setHandoffNotes('');
-                    setShowNotesPreview(true);
-                    showToast('✓ Note saved!');
+                    const { data: newNote } = await supabase
+                      .from('handoff_notes')
+                      .insert({
+                        chapter_id: dbUser.chapter_id,
+                        note_text: handoffNotes.trim(),
+                        created_by: dbUser.id,
+                      })
+                      .select()
+                      .single();
+                    if (newNote) {
+                      setSavedNotes(prev => [{
+                        id: newNote.id,
+                        text: newNote.note_text,
+                        date: new Date(newNote.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                      }, ...prev]);
+                      setHandoffNotes('');
+                      setShowNotesPreview(true);
+                      showToast('✓ Note saved!');
+                    }
                   }}
                   style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
                 >Save Note</button>
@@ -569,7 +719,10 @@ export default function DocumentsPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#8a97a8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{note.date}</div>
                         <button
-                          onClick={() => setSavedNotes(prev => prev.filter(n => n.id !== note.id))}
+                          onClick={async () => {
+                            await supabase.from('handoff_notes').delete().eq('id', note.id);
+                            setSavedNotes(prev => prev.filter(n => n.id !== note.id));
+                          }}
                           style={{ background: 'none', border: 'none', color: '#e05c5c', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}
                         >✕</button>
                       </div>
@@ -692,6 +845,7 @@ export default function DocumentsPage() {
       )}
 
     </div>
+    </ProtectedRoute>
   );
 }
 
