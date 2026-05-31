@@ -1,81 +1,10 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-
-const INITIAL_EVENTS = [
-  {
-    id: 1,
-    name: 'Spring Formal',
-    date: '2026-04-15',
-    location: 'Grand Ballroom, Coeur d\'Alene Resort',
-    status: 'active',
-    budgeted: 5000,
-    headcountEstimated: 120,
-    headcountActual: 98,
-    deadlines: [
-      { label: 'Venue Deposit', date: '2026-02-28', paid: true },
-      { label: 'DJ Deposit', date: '2026-02-15', paid: true },
-      { label: 'Final Venue Payment', date: '2026-04-01', paid: false },
-      { label: 'Catering Final Count', date: '2026-04-08', paid: false },
-    ],
-    expenses: [
-      { id: 1, desc: 'Venue Deposit', amount: 1200, cat: 'Venue', date: '2026-02-28' },
-      { id: 2, desc: 'DJ Deposit', amount: 600, cat: 'Entertainment', date: '2026-02-15' },
-      { id: 3, desc: 'Decorations', amount: 340, cat: 'Decor', date: '2026-03-20' },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Philanthropy 5K',
-    date: '2026-04-22',
-    location: 'City Park, Moscow ID',
-    status: 'approved',
-    budgeted: 1500,
-    headcountEstimated: 200,
-    headcountActual: null,
-    deadlines: [
-      { label: 'Park Permit', date: '2026-03-15', paid: true },
-      { label: 'T-Shirt Order', date: '2026-04-01', paid: false },
-    ],
-    expenses: [
-      { id: 1, desc: 'Park Permit Fee', amount: 150, cat: 'Permits', date: '2026-03-15' },
-    ],
-  },
-  {
-    id: 3,
-    name: 'Rush Week Kickoff',
-    date: '2026-08-25',
-    location: 'Chapter House',
-    status: 'draft',
-    budgeted: 2000,
-    headcountEstimated: 80,
-    headcountActual: null,
-    deadlines: [
-      { label: 'Food & Drinks Order', date: '2026-08-20', paid: false },
-    ],
-    expenses: [],
-  },
-  {
-    id: 4,
-    name: 'Fall Alumni Banquet',
-    date: '2025-11-15',
-    location: 'Elks Lodge, Moscow ID',
-    status: 'complete',
-    budgeted: 3000,
-    headcountEstimated: 75,
-    headcountActual: 68,
-    deadlines: [
-      { label: 'Venue Deposit', date: '2025-10-01', paid: true },
-      { label: 'Catering Payment', date: '2025-11-10', paid: true },
-    ],
-    expenses: [
-      { id: 1, desc: 'Venue Rental', amount: 800, cat: 'Venue', date: '2025-10-01' },
-      { id: 2, desc: 'Catering', amount: 1700, cat: 'Food', date: '2025-11-10' },
-      { id: 3, desc: 'Decorations', amount: 220, cat: 'Decor', date: '2025-11-12' },
-    ],
-  },
-];
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 const STATUS_CONFIG = {
   draft:    { label: 'Draft',    color: '#8a97a8', bg: '#f0f3f7' },
@@ -272,8 +201,10 @@ function AddDeadlineModal({ onClose, onSave }) {
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function EventsPage() {
-  const [events, setEvents] = useState(INITIAL_EVENTS);
-  const [selectedId, setSelectedId] = useState(1);
+  const { dbUser } = useAuth();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
@@ -286,7 +217,7 @@ export default function EventsPage() {
   const [editingBudgeted, setEditingBudgeted] = useState(false);
   const [budgetedInput, setBudgetedInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [nextExpenseId, setNextExpenseId] = useState(100);
+  // expense IDs now come from Supabase
   const [toast, setToast] = useState({ message: '', undoFn: null, countdown: 8 });
   const toastTimerRef = useRef(null);
   const countdownRef = useRef(null);
@@ -323,88 +254,271 @@ export default function EventsPage() {
     setToast({ message: '', undoFn: null, countdown: 8 });
   }, []);
 
-  function handleAddEvent(data) {
-    const newEvent = { ...data, id: events.length + 1 };
-    setEvents(prev => [newEvent, ...prev]);
-    setSelectedId(newEvent.id);
+  // ── FETCH DATA ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+    const [eventsRes, expensesRes, deadlinesRes] = await Promise.all([
+      supabase.from('events').select('*').eq('chapter_id', dbUser.chapter_id).order('date', { ascending: false }),
+      supabase.from('event_expenses').select('*').eq('chapter_id', dbUser.chapter_id),
+      supabase.from('event_deadlines').select('*').eq('chapter_id', dbUser.chapter_id),
+    ]);
+
+    if (eventsRes.data) {
+      const mapped = eventsRes.data.map(e => ({
+        id: e.id,
+        name: e.name,
+        date: e.date,
+        location: e.location || '',
+        status: e.status || 'draft',
+        budgeted: Number(e.budgeted_amount) || 0,
+        headcountEstimated: e.headcount_estimated,
+        headcountActual: e.headcount_actual,
+        deadlines: (deadlinesRes.data || [])
+          .filter(d => d.event_id === e.id)
+          .map(d => ({ id: d.id, label: d.label, date: d.due_date, paid: d.paid })),
+        expenses: (expensesRes.data || [])
+          .filter(ex => ex.event_id === e.id)
+          .map(ex => ({
+            id: ex.id,
+            desc: ex.description,
+            amount: Number(ex.amount),
+            cat: ex.category || 'Other',
+            date: ex.date,
+            transaction_id: ex.transaction_id,
+          })),
+      }));
+      setEvents(mapped);
+      if (mapped.length > 0) setSelectedId(mapped[0].id);
+    }
+    setLoading(false);
   }
 
-  function handleDeleteEvent() {
+  async function handleAddEvent(data) {
+    const { data: newEvent, error } = await supabase
+      .from('events')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        name: data.name,
+        date: data.date,
+        location: data.location,
+        status: data.status,
+        budgeted_amount: data.budgeted,
+        headcount_estimated: data.headcountEstimated,
+      })
+      .select()
+      .single();
+
+    if (newEvent) {
+      const mapped = {
+        id: newEvent.id,
+        name: newEvent.name,
+        date: newEvent.date,
+        location: newEvent.location || '',
+        status: newEvent.status || 'draft',
+        budgeted: Number(newEvent.budgeted_amount) || 0,
+        headcountEstimated: newEvent.headcount_estimated,
+        headcountActual: newEvent.headcount_actual,
+        deadlines: [],
+        expenses: [],
+      };
+      setEvents(prev => [mapped, ...prev]);
+      setSelectedId(mapped.id);
+    }
+  }
+
+  async function handleDeleteEvent() {
     const deletedEvent = selected;
     const remaining = events.filter(e => e.id !== selectedId);
     setEvents(remaining);
     setSelectedId(remaining.length > 0 ? remaining[0].id : null);
     setShowDeleteConfirm(false);
-    showToast(`"${deletedEvent.name}" deleted`, () => {
-      setEvents(prev => [...prev, deletedEvent]);
-      setSelectedId(deletedEvent.id);
-    });
+    await supabase.from('events').delete().eq('id', selectedId);
+    showToast(`"${deletedEvent.name}" deleted`);
   }
 
-  function handleStatusChange(eventId, newStatus) {
+  async function handleStatusChange(eventId, newStatus) {
+    await supabase.from('events').update({ status: newStatus }).eq('id', eventId);
     setEvents(prev => prev.map(e => e.id === eventId ? { ...e, status: newStatus } : e));
   }
 
-  function handleToggleDeadline(eventId, index) {
+  async function handleToggleDeadline(eventId, index) {
+    const event = events.find(e => e.id === eventId);
+    const deadline = event.deadlines[index];
+    const newPaid = !deadline.paid;
+    await supabase.from('event_deadlines').update({ paid: newPaid }).eq('id', deadline.id);
     setEvents(prev => prev.map(e => {
       if (e.id !== eventId) return e;
-      const newDeadlines = e.deadlines.map((d, i) => i === index ? { ...d, paid: !d.paid } : d);
+      const newDeadlines = e.deadlines.map((d, i) => i === index ? { ...d, paid: newPaid } : d);
       return { ...e, deadlines: newDeadlines };
     }));
   }
 
-  function handleAddDeadline(deadline) {
-    setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, deadlines: [...e.deadlines, deadline] }));
+  async function handleAddDeadline(deadline) {
+    const { data, error } = await supabase
+      .from('event_deadlines')
+      .insert({
+        chapter_id: dbUser.chapter_id,
+        event_id: selectedId,
+        label: deadline.label,
+        due_date: deadline.date,
+        paid: false,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      const mapped = { id: data.id, label: data.label, date: data.due_date, paid: data.paid };
+      setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, deadlines: [...e.deadlines, mapped] }));
+    }
   }
 
-  function handleSaveExpense(expense) {
-    setEvents(prev => prev.map(e => {
-      if (e.id !== selectedId) return e;
-      if (expense.id) {
-        return { ...e, expenses: e.expenses.map(ex => ex.id === expense.id ? expense : ex) };
-      } else {
-        return { ...e, expenses: [...e.expenses, { ...expense, id: nextExpenseId }] };
+  async function handleSaveExpense(expense) {
+    if (expense.id) {
+      // Edit existing expense
+      await supabase.from('event_expenses').update({
+        description: expense.desc,
+        amount: expense.amount,
+        category: expense.cat,
+        date: expense.date,
+      }).eq('id', expense.id);
+
+      // Update linked transaction if exists
+      const existing = selected.expenses.find(ex => ex.id === expense.id);
+      if (existing?.transaction_id) {
+        await supabase.from('transactions').update({
+          description: `${expense.desc} — ${selected.name}`,
+          amount: expense.amount,
+          date: expense.date,
+        }).eq('id', existing.transaction_id);
       }
-    }));
-    setNextExpenseId(prev => prev + 1);
+
+      setEvents(prev => prev.map(e => {
+        if (e.id !== selectedId) return e;
+        return { ...e, expenses: e.expenses.map(ex => ex.id === expense.id ? { ...ex, ...expense } : ex) };
+      }));
+    } else {
+      // Add new expense — also create a transaction
+      const { data: txData } = await supabase.from('transactions').insert({
+        chapter_id: dbUser.chapter_id,
+        date: expense.date,
+        description: `${expense.desc} — ${selected.name}`,
+        amount: expense.amount,
+        type: 'expense',
+        event_id: selectedId,
+        verified: false,
+        notes: `Event expense: ${expense.cat}`,
+      }).select().single();
+
+      const { data: expData } = await supabase.from('event_expenses').insert({
+        chapter_id: dbUser.chapter_id,
+        event_id: selectedId,
+        transaction_id: txData?.id || null,
+        description: expense.desc,
+        amount: expense.amount,
+        category: expense.cat,
+        date: expense.date,
+      }).select().single();
+
+      if (expData) {
+        const mapped = {
+          id: expData.id,
+          desc: expData.description,
+          amount: Number(expData.amount),
+          cat: expData.category || 'Other',
+          date: expData.date,
+          transaction_id: expData.transaction_id,
+        };
+        setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, expenses: [...e.expenses, mapped] }));
+      }
+    }
   }
 
-  function handleDeleteExpense(expenseId) {
+  async function handleDeleteExpense(expenseId) {
     const expense = selected.expenses.find(ex => ex.id === expenseId);
     setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, expenses: e.expenses.filter(ex => ex.id !== expenseId) }));
-    showToast(`"${expense.desc}" deleted`, () => {
-      setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, expenses: [...e.expenses, expense] }));
+
+    // Delete linked transaction if exists
+    if (expense.transaction_id) {
+      await supabase.from('transactions').delete().eq('id', expense.transaction_id);
+    }
+    await supabase.from('event_expenses').delete().eq('id', expenseId);
+
+    showToast(`"${expense.desc}" deleted`, async () => {
+      // Restore expense and transaction on undo
+      const { data: txData } = await supabase.from('transactions').insert({
+        chapter_id: dbUser.chapter_id,
+        date: expense.date,
+        description: `${expense.desc} — ${selected.name}`,
+        amount: expense.amount,
+        type: 'expense',
+        event_id: selectedId,
+        verified: false,
+      }).select().single();
+
+      const { data: expData } = await supabase.from('event_expenses').insert({
+        chapter_id: dbUser.chapter_id,
+        event_id: selectedId,
+        transaction_id: txData?.id || null,
+        description: expense.desc,
+        amount: expense.amount,
+        category: expense.cat,
+        date: expense.date,
+      }).select().single();
+
+      if (expData) {
+        setEvents(prev => prev.map(e => e.id !== selectedId ? e : {
+          ...e, expenses: [...e.expenses, { ...expense, id: expData.id, transaction_id: txData?.id }]
+        }));
+      }
     });
   }
 
-  function handleSaveHeadcount() {
+  async function handleSaveHeadcount() {
     const val = parseInt(headcountInput);
     if (!isNaN(val) && val > 0) {
+      await supabase.from('events').update({ headcount_actual: val }).eq('id', selectedId);
       setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, headcountActual: val }));
     }
     setEditingHeadcount(false);
     setHeadcountInput('');
   }
 
-  function handleSaveEstHeadcount() {
+  async function handleSaveEstHeadcount() {
     const val = parseInt(estHeadcountInput);
     if (!isNaN(val) && val > 0) {
+      await supabase.from('events').update({ headcount_estimated: val }).eq('id', selectedId);
       setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, headcountEstimated: val }));
     }
     setEditingEstHeadcount(false);
     setEstHeadcountInput('');
   }
 
-  function handleSaveBudgeted() {
+  async function handleSaveBudgeted() {
     const val = parseFloat(budgetedInput);
     if (!isNaN(val) && val > 0) {
+      await supabase.from('events').update({ budgeted_amount: val }).eq('id', selectedId);
       setEvents(prev => prev.map(e => e.id !== selectedId ? e : { ...e, budgeted: val }));
     }
     setEditingBudgeted(false);
     setBudgetedInput('');
   }
 
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading events...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
       <Sidebar activePage="events" />
 
@@ -719,6 +833,7 @@ export default function EventsPage() {
       )}
 
     </div>
+    </ProtectedRoute>
   );
 }
 
