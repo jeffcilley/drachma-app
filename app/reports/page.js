@@ -1,63 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts';
 
-const MONTHLY_DATA = [
-  { month: 'Jan', income: 6300, expenses: 5485 },
-  { month: 'Feb', income: 9900, expenses: 7140 },
-  { month: 'Mar', income: 6900, expenses: 2240 },
-  { month: 'Apr', income: 2400, expenses: 1800 },
-  { month: 'May', income: 1500, expenses: 900  },
-];
-
-const CATEGORY_DATA = [
-  { name: 'Housing / Rent',  value: 6300, color: '#4a90d9' },
-  { name: 'Nationals Dues',  value: 2500, color: '#c9a84c' },
-  { name: 'Social Events',   value: 2240, color: '#a78bfa' },
-  { name: 'Recruitment',     value: 1500, color: '#f5a623' },
-  { name: 'Insurance',       value: 1000, color: '#2ecc8a' },
-  { name: 'Philanthropy',    value: 900,  color: '#e05c5c' },
-  { name: 'Operations',      value: 425,  color: '#8a97a8' },
-];
-
-const BALANCE_DATA = [
-  { week: 'Jan 1',  balance: 8200  },
-  { week: 'Jan 15', balance: 5400  },
-  { week: 'Feb 1',  balance: 9800  },
-  { week: 'Feb 15', balance: 4200  },
-  { week: 'Mar 1',  balance: 8600  },
-  { week: 'Mar 15', balance: 6900  },
-  { week: 'Apr 1',  balance: 7500  },
-  { week: 'Apr 15', balance: 6200  },
-  { week: 'May 1',  balance: 6800  },
-  { week: 'May 15', balance: 7235  },
-];
-
-const SEMESTER_STATS = {
-  totalIn:      17100,
-  totalOut:     14865,
-  net:          2235,
-  budgetLeft:   3635,
-  members:      34,
-  transactions: 24,
-  unreconciled: 4,
-};
-
-const RECENT_TRANSACTIONS = [
-  { date: 'Mar 5',  desc: 'Spring Dues — Batch 4',         cat: 'Dues Collected',  type: 'income',  amount: 3300 },
-  { date: 'Mar 1',  desc: 'Spring Dues — Batch 3',         cat: 'Dues Collected',  type: 'income',  amount: 3600 },
-  { date: 'Feb 28', desc: 'Venue Deposit — Spring Formal', cat: 'Social Events',   type: 'expense', amount: 1200 },
-  { date: 'Feb 28', desc: 'Monthly House Payment',         cat: 'Housing / Rent',  type: 'expense', amount: 2100 },
-  { date: 'Feb 26', desc: 'Chapter Meeting Dinner',        cat: 'Operations',      type: 'expense', amount: 340  },
-  { date: 'Feb 24', desc: 'Spring Dues — Batch 2',         cat: 'Dues Collected',  type: 'income',  amount: 3000 },
-  { date: 'Feb 20', desc: 'Nationals Per-Member Fee',      cat: 'Nationals Dues',  type: 'expense', amount: 2500 },
-  { date: 'Feb 18', desc: 'Liability Insurance Premium',   cat: 'Insurance',       type: 'expense', amount: 600  },
-];
+// Data now loaded from Supabase
+const SEMESTER = 'Spring 2026';
 
 function CustomBarTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -99,11 +53,123 @@ function CustomLineTooltip({ active, payload, label }) {
 }
 
 export default function ReportsPage() {
+  const { dbUser } = useAuth();
   const [activeIndex, setActiveIndex] = useState(null);
   const [exportToast, setExportToast] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [categoryData, setCategoryData] = useState([]);
+  const [balanceData, setBalanceData] = useState([]);
+  const [semesterStats, setSemesterStats] = useState({
+    totalIn: 0, totalOut: 0, net: 0, budgetLeft: 0,
+    members: 0, transactions: 0, unreconciled: 0, collectionRate: 0,
+  });
+  const [recentTransactions, setRecentTransactions] = useState([]);
 
-  const totalExpenses = CATEGORY_DATA.reduce((s, c) => s + c.value, 0);
-  const categoryDataWithPct = CATEGORY_DATA.map(c => ({
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+
+    const [txRes, catRes, membersRes, duesRes] = await Promise.all([
+      supabase.from('transactions').select('*').eq('chapter_id', dbUser.chapter_id).order('date', { ascending: true }),
+      supabase.from('budget_categories').select('*').eq('chapter_id', dbUser.chapter_id),
+      supabase.from('members').select('id, status').eq('chapter_id', dbUser.chapter_id),
+      supabase.from('dues_payments').select('*').eq('chapter_id', dbUser.chapter_id),
+    ]);
+
+    const transactions = txRes.data || [];
+    const categories = catRes.data || [];
+    const members = membersRes.data || [];
+    const dues = duesRes.data || [];
+
+    // ── STATS ──────────────────────────────────────────────
+    const totalIn = transactions.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+    const totalOut = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+    const totalBudgeted = categories.reduce((s, c) => s + Number(c.budgeted_amount), 0);
+    const unreconciled = transactions.filter(t => !t.verified).length;
+    const activeMembers = members.filter(m => m.status !== 'dropped').length;
+    const semDues = dues.filter(d => d.semester === SEMESTER);
+    const paidDues = semDues.filter(d => d.status === 'paid').length;
+    const collectionRate = semDues.length > 0 ? Math.round(paidDues / semDues.length * 100) : 0;
+
+    setSemesterStats({
+      totalIn, totalOut, net: totalIn - totalOut,
+      budgetLeft: totalBudgeted - totalOut,
+      members: activeMembers,
+      transactions: transactions.length,
+      unreconciled,
+      collectionRate,
+    });
+
+    // ── MONTHLY DATA ───────────────────────────────────────
+    const monthMap = {};
+    transactions.forEach(tx => {
+      const month = new Date(tx.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' });
+      if (!monthMap[month]) monthMap[month] = { month, income: 0, expenses: 0 };
+      if (tx.type === 'income') monthMap[month].income += Number(tx.amount);
+      else monthMap[month].expenses += Number(tx.amount);
+    });
+    setMonthlyData(Object.values(monthMap));
+
+    // ── CATEGORY SPENDING ──────────────────────────────────
+    const spentMap = {};
+    transactions.filter(t => t.type === 'expense').forEach(t => {
+      if (t.category_id) spentMap[t.category_id] = (spentMap[t.category_id] || 0) + Number(t.amount);
+    });
+    const COLORS = ['#4a90d9','#c9a84c','#a78bfa','#f5a623','#2ecc8a','#e05c5c','#8a97a8'];
+    const catData = categories
+      .filter(c => spentMap[c.id] > 0)
+      .map((c, i) => ({
+        name: c.name,
+        value: spentMap[c.id] || 0,
+        color: c.color || COLORS[i % COLORS.length],
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    // Add uncategorized expenses as a catch-all slice
+    const uncategorizedTotal = transactions
+      .filter(t => t.type === 'expense' && !t.category_id)
+      .reduce((s, t) => s + Number(t.amount), 0);
+
+    if (uncategorizedTotal > 0) {
+      catData.push({ name: 'Uncategorized', value: uncategorizedTotal, color: '#dce3eb' });
+    }
+
+    setCategoryData(catData);
+
+    // ── RUNNING BALANCE ────────────────────────────────────
+    let bal = 0;
+    const balData = transactions.map(tx => {
+      bal += tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount);
+      return {
+        week: new Date(tx.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        balance: bal,
+      };
+    });
+    setBalanceData(balData);
+
+    // ── RECENT TRANSACTIONS ────────────────────────────────
+    const recent = [...transactions]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 8)
+      .map(tx => ({
+        date: new Date(tx.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        desc: tx.description,
+        cat: categories.find(c => c.id === tx.category_id)?.name || 'Uncategorized',
+        type: tx.type,
+        amount: Number(tx.amount),
+      }));
+    setRecentTransactions(recent);
+
+    setLoading(false);
+  }
+
+  const totalExpenses = categoryData.reduce((s, c) => s + c.value, 0);
+  const categoryDataWithPct = categoryData.map(c => ({
     ...c,
     pct: Math.round(c.value / totalExpenses * 100),
   }));
@@ -113,7 +179,17 @@ export default function ReportsPage() {
     setTimeout(() => setExportToast(''), 3000);
   }
 
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading reports...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
       <Sidebar activePage="reports" />
 
@@ -123,7 +199,7 @@ export default function ReportsPage() {
         <div style={{ padding: '20px 28px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 600, color: '#0d1b2a' }}>Reports</div>
-            <div style={{ fontSize: 12, color: '#8a97a8', marginTop: 2 }}>Spring 2025 · Financial Summary</div>
+            <div style={{ fontSize: 12, color: '#8a97a8', marginTop: 2 }}>{SEMESTER} · Financial Summary</div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => showExportToast('📄 PDF report exported!')} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #dce3eb', background: '#ffffff', color: '#0d1b2a', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -138,10 +214,10 @@ export default function ReportsPage() {
         {/* STAT CARDS */}
         <div style={{ padding: '16px 28px 0', flexShrink: 0 }}>
           <div className="stats-row">
-            <StatCard label="TOTAL IN"    value={`$${SEMESTER_STATS.totalIn.toLocaleString()}`}    sub="Dues + other income"   colorClass="green" valueColor="#0d1b2a" />
-            <StatCard label="TOTAL OUT"   value={`$${SEMESTER_STATS.totalOut.toLocaleString()}`}   sub="All expenses"          colorClass="red" />
-            <StatCard label="NET BALANCE" value={`$${SEMESTER_STATS.net.toLocaleString()}`}        sub="This semester"         colorClass="blue" />
-            <StatCard label="BUDGET LEFT" value={`$${SEMESTER_STATS.budgetLeft.toLocaleString()}`} sub="Across all categories" colorClass="gold" valueColor="#0d1b2a" />
+            <StatCard label="TOTAL IN"    value={`$${semesterStats.totalIn.toLocaleString()}`}    sub="Dues + other income"   colorClass="green" valueColor="#0d1b2a" />
+            <StatCard label="TOTAL OUT"   value={`$${semesterStats.totalOut.toLocaleString()}`}   sub="All expenses"          colorClass="red" />
+            <StatCard label="NET BALANCE" value={`$${semesterStats.net.toLocaleString()}`}        sub="This semester"         colorClass="blue" />
+            <StatCard label="BUDGET LEFT" value={`$${semesterStats.budgetLeft.toLocaleString()}`} sub="Across all categories" colorClass="gold" valueColor="#0d1b2a" />
           </div>
         </div>
 
@@ -155,7 +231,7 @@ export default function ReportsPage() {
             <div style={{ background: '#ffffff', borderRadius: 12, border: '1px solid #eef0f4', padding: 20, flexShrink: 0, outline: 'none' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 16 }}>Monthly Income vs Expenses</div>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={MONTHLY_DATA} barCategoryGap="30%" barGap={4}>
+                <BarChart data={monthlyData} barCategoryGap="30%" barGap={4}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f3f7" vertical={false} />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#8a97a8' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#8a97a8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
@@ -172,13 +248,14 @@ export default function ReportsPage() {
 
               {/* DONUT CHART */}
               <div style={{ flex: 1, background: '#ffffff', borderRadius: 12, border: '1px solid #eef0f4', padding: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 16 }}>Spending by Category</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 4 }}>Spending by Category</div>
+              <div style={{ fontSize: 11, color: '#8a97a8', marginBottom: 12 }}>Best practice: categorize all expenses for accurate reporting.</div>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                   <div style={{ flexShrink: 0 }}>
                     <ResponsiveContainer width={160} height={160}>
                       <PieChart>
                         <Pie
-                          data={categoryDataWithPct}
+                          data={categoryDataWithPct.length > 0 ? categoryDataWithPct : [{ name: 'No data', value: 1, color: '#eef0f4' }]}
                           cx="50%"
                           cy="50%"
                           innerRadius={45}
@@ -228,7 +305,7 @@ export default function ReportsPage() {
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 4 }}>Running Balance</div>
                 <div style={{ fontSize: 11, color: '#8a97a8', marginBottom: 16 }}>Account balance trend across the semester</div>
                 <ResponsiveContainer width="100%" height={180}>
-                  <LineChart data={BALANCE_DATA}>
+                  <LineChart data={balanceData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f3f7" vertical={false} />
                     <XAxis dataKey="week" tick={{ fontSize: 9, fill: '#8a97a8' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: '#8a97a8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
@@ -256,11 +333,11 @@ export default function ReportsPage() {
               <div style={{ fontSize: 12, fontWeight: 600, color: '#0d1b2a', marginBottom: 14 }}>Semester Summary</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[
-                  { label: 'Active Members',       value: SEMESTER_STATS.members },
-                  { label: 'Transactions',          value: SEMESTER_STATS.transactions },
-                  { label: 'Unreconciled',          value: SEMESTER_STATS.unreconciled, warn: true },
-                  { label: 'Avg Expense',           value: `$${Math.round(SEMESTER_STATS.totalOut / SEMESTER_STATS.transactions).toLocaleString()}` },
-                  { label: 'Dues Collection Rate',  value: '89%', good: true },
+                  { label: 'Active Members',       value: semesterStats.members },
+                  { label: 'Transactions',          value: semesterStats.transactions },
+                  { label: 'Unreconciled',          value: semesterStats.unreconciled, warn: true },
+                  { label: 'Avg Expense',           value: semesterStats.transactions > 0 ? `$${Math.round(semesterStats.totalOut / semesterStats.transactions).toLocaleString()}` : '$0' },
+                  { label: 'Dues Collection Rate',  value: `${semesterStats.collectionRate}%`, good: true },
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f3f5f8' }}>
                     <span style={{ fontSize: 12, color: '#8a97a8' }}>{row.label}</span>
@@ -293,8 +370,8 @@ export default function ReportsPage() {
             <div style={{ background: '#ffffff', borderRadius: 12, border: '1px solid #eef0f4', flexShrink: 0 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef0f4', fontSize: 12, fontWeight: 600, color: '#0d1b2a' }}>Recent Transactions</div>
               <div>
-                {RECENT_TRANSACTIONS.map((tx, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: i < RECENT_TRANSACTIONS.length - 1 ? '1px solid #f3f5f8' : 'none' }}>
+                {recentTransactions.map((tx, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: i < recentTransactions.length - 1 ? '1px solid #f3f5f8' : 'none' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 500, color: '#0d1b2a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tx.desc}</div>
                       <div style={{ fontSize: 10, color: '#8a97a8', marginTop: 1 }}>{tx.cat} · {tx.date}</div>
@@ -324,6 +401,7 @@ export default function ReportsPage() {
       )}
 
     </div>
+    </ProtectedRoute>
   );
 }
 
