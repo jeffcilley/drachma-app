@@ -661,9 +661,9 @@ export default function TransactionsPage() {
       .sort((a, b) => b.date.localeCompare(a.date))
       .map(tx => [
         formatDate(tx.date),
-        '"' + tx.desc.replace(/"/g, '""') + '"',
+        '"' + (tx.description || '').replace(/"/g, '""') + '"',
         '"' + (tx.notes || '').replace(/"/g, '""') + '"',
-        CATEGORIES[tx.cat].name,
+        categories.find(c => c.id === tx.category_id)?.name || 'Uncategorized',
         tx.type,
         (tx.type === 'income' ? '' : '-') + tx.amount,
         balMap[tx.id],

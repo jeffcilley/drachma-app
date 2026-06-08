@@ -788,7 +788,7 @@ export default function DocumentsPage() {
                 </div>
               )}
               <button
-                onClick={() => showToast('📦 Handoff package generated and sent!')}
+                onClick={() => showToast('Handoff package coming soon!')}
                 style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: '#c9a84c', color: '#0d1b2a', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 Generate & Send Package

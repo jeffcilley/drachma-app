@@ -573,7 +573,7 @@ export default function BudgetPage() {
             </div>
             {view === 'budget' && (
               <>
-                <button style={S.btnOutline}>Export PDF</button>
+                <button style={S.btnOutline} onClick={() => showToast('PDF export coming soon!')}>Export PDF</button>
                 <button style={S.btn} onClick={() => setAddSheet(true)}>+ Add Category</button>
               </>
             )}

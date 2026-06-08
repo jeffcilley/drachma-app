@@ -259,16 +259,16 @@ export default function Dashboard() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", padding: "16px" }}>
                   {[
-                    { icon: "➕", label: "Add Transaction", desc: "Log an expense or income" },
-                    { icon: "🧾", label: "Scan Receipt",    desc: "AI reads it for you" },
-                    { icon: "📧", label: "Send Reminders",  desc: "Email overdue members" },
-                    { icon: "📄", label: "Export Report",   desc: "Semester PDF summary" },
+                    { icon: "➕", label: "Add Transaction", desc: "Log an expense or income", href: "/transactions" },
+                    { icon: "🧾", label: "Scan Receipt",    desc: "AI reads it for you",      href: "/scanner" },
+                    { icon: "📧", label: "Send Reminders",  desc: "Email overdue members",    href: "/members" },
+                    { icon: "📄", label: "Export Report",   desc: "Semester PDF summary",     href: "/reports" },
                   ].map((qa, i) => (
-                    <button key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px", padding: "18px 12px", background: "#f0f3f7", border: "1px solid #dce3eb", borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    <a key={i} href={qa.href} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px", padding: "18px 12px", background: "#f0f3f7", border: "1px solid #dce3eb", borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", textDecoration: "none" }}>
                       <span style={{ fontSize: "24px" }}>{qa.icon}</span>
                       <span style={{ fontSize: "12px", fontWeight: "500", color: "#0d1b2a", textAlign: "center" }}>{qa.label}</span>
                       <span style={{ fontSize: "10px", color: "#8a97a8", textAlign: "center" }}>{qa.desc}</span>
-                    </button>
+                    </a>
                   ))}
                 </div>
               </div>

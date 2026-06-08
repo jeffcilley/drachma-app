@@ -202,10 +202,10 @@ export default function ReportsPage() {
             <div style={{ fontSize: 12, color: '#8a97a8', marginTop: 2 }}>{SEMESTER} · Financial Summary</div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => showExportToast('📄 PDF report exported!')} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #dce3eb', background: '#ffffff', color: '#0d1b2a', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => showExportToast('PDF export coming soon!')} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #dce3eb', background: '#ffffff', color: '#0d1b2a', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
               Export PDF
             </button>
-            <button onClick={() => showExportToast('📦 Treasurer handoff package exported!')} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => showExportToast('Treasurer handoff package coming soon!')} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               Treasurer Handoff
             </button>
           </div>
@@ -351,15 +351,15 @@ export default function ReportsPage() {
             <div style={{ background: '#ffffff', borderRadius: 12, border: '1px solid #eef0f4', padding: 16, flexShrink: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#0d1b2a', marginBottom: 14 }}>Export Options</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <button onClick={() => showExportToast('📄 PDF report exported!')} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #dce3eb', background: '#f8f9fb', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                <button onClick={() => showExportToast('PDF export coming soon!')} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #dce3eb', background: '#f8f9fb', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 2 }}>📄 Export PDF Report</div>
                   <div style={{ fontSize: 11, color: '#8a97a8' }}>Full semester summary with charts</div>
                 </button>
-                <button onClick={() => showExportToast('📊 CSV exported!')} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #dce3eb', background: '#f8f9fb', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                <button onClick={() => showExportToast('CSV export coming soon!')} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #dce3eb', background: '#f8f9fb', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 2 }}>📊 Export CSV</div>
                   <div style={{ fontSize: 11, color: '#8a97a8' }}>Raw transaction data for Excel</div>
                 </button>
-                <button onClick={() => showExportToast('📦 Treasurer handoff package exported!')} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: 'none', background: '#0d1b2a', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                <button onClick={() => showExportToast('Treasurer handoff package coming soon!')} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: 'none', background: '#0d1b2a', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff', marginBottom: 2 }}>📦 Treasurer Handoff</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Summary + transactions + budget report</div>
                 </button>

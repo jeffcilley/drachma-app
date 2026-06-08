@@ -649,6 +649,9 @@ export default function EventsPage() {
                 </div>
 
                 {/* Key Stats */}
+                <div style={{ fontSize: 11, color: '#8a97a8', marginBottom: 8, fontStyle: 'italic' }}>
+                  💡 Click Budgeted, Est. Headcount, or Actual Headcount to edit
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
 
                   {/* Editable Budgeted */}

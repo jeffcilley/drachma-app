@@ -340,6 +340,46 @@ export default function MembersPage() {
     });
   }
 
+  // ── EXPORT CSV ─────────────────────────────────────────────
+  function exportCSV() {
+    if (activeTab === 'dues') {
+      const headers = ['Name', 'Email', 'Dues Owed', 'Paid So Far', 'Remaining', 'Status'];
+      const rows = members
+        .filter(m => m.status !== 'dropped')
+        .map(m => [
+          '"' + m.name + '"',
+          '"' + (m.email || '') + '"',
+          getMemberDuesOwed(m.id),
+          getMemberPartialPaid(m.id),
+          getMemberDuesOwed(m.id) - getMemberPartialPaid(m.id),
+          getMemberDuesStatus(m.id),
+        ]);
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'drachma-dues.csv'; a.click();
+      URL.revokeObjectURL(url);
+      showToast('Dues exported to CSV');
+    } else {
+      const headers = ['Member', 'Reason', 'Amount', 'Date', 'Status'];
+      const rows = fines.map(f => [
+        '"' + f.name + '"',
+        '"' + f.reason + '"',
+        f.amt,
+        f.date,
+        f.paid ? 'Paid' : 'Unpaid',
+      ]);
+      const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'drachma-fines.csv'; a.click();
+      URL.revokeObjectURL(url);
+      showToast('Fines exported to CSV');
+    }
+  }
+
   // ── FILTERED LISTS ─────────────────────────────────────────
   const filteredMembers = members.filter(m => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase());
@@ -387,8 +427,8 @@ export default function MembersPage() {
             </div>
           </div>
           <div className="topbar-right">
-            <button className="btn-outline">Export CSV</button>
-            <button className="btn-outline">Import from GreekBill / OmegaFi</button>
+            <button className="btn-outline" onClick={exportCSV}>Export CSV</button>
+            <button className="btn-outline" onClick={() => showToast('CSV import coming soon — export your roster and we will map it automatically')}>Import from CSV</button>
             {activeTab === 'dues' && (
               <button className="btn" onClick={() => setAddMemberModal(true)}>+ Add Member</button>
             )}
