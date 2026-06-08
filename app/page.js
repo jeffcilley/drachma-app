@@ -1,4 +1,10 @@
+'use client';
+
 export default function Home() {
+  function scrollTo(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  }
+
   return (
     <main style={{
       fontFamily: "'DM Sans', sans-serif",
@@ -29,15 +35,11 @@ export default function Home() {
           Drach<span style={{ color: "#c9a84c" }}>m</span>a
         </div>
         <div style={{ display: "flex", gap: "36px", alignItems: "center" }}>
-          {["Features", "Pricing", "Multi-Chapter", "Login"].map(item => (
-            <a key={item} href="#" style={{
-              color: "rgba(255,255,255,0.6)",
-              textDecoration: "none",
-              fontSize: "14px",
-              transition: "color 0.2s",
-            }}>{item}</a>
-          ))}
-          <a href="#" style={{
+          <button onClick={() => scrollTo('features')} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: "14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Features</button>
+          <button onClick={() => scrollTo('pricing')} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: "14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Pricing</button>
+          <button onClick={() => scrollTo('pricing')} style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: "14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Multi-Chapter</button>
+          <a href="/login" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: "14px" }}>Login</a>
+          <a href="/signup" style={{
             background: "#c9a84c",
             color: "#0d1b2a",
             padding: "10px 22px",
@@ -101,7 +103,7 @@ export default function Home() {
         </p>
 
         <div style={{ display: "flex", gap: "16px" }}>
-          <a href="#" style={{
+          <a href="/login" style={{
             background: "#c9a84c",
             color: "#0d1b2a",
             padding: "16px 36px",
@@ -110,38 +112,39 @@ export default function Home() {
             fontWeight: "600",
             textDecoration: "none",
           }}>See the Dashboard →</a>
-          <a href="#" style={{
+          <button onClick={() => scrollTo('pricing')} style={{
             background: "transparent",
             color: "rgba(255,255,255,0.7)",
             padding: "16px 36px",
             borderRadius: "8px",
             fontSize: "15px",
             fontWeight: "500",
-            textDecoration: "none",
             border: "1px solid rgba(255,255,255,0.15)",
-          }}>View Pricing</a>
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}>View Pricing</button>
         </div>
 
-        {/* STATS */}
+        {/* VALUE PROPS */}
         <div style={{ display: "flex", gap: "60px", marginTop: "80px" }}>
           {[
-            { num: "340+", label: "Active Chapters" },
-            { num: "$4.2M", label: "Managed This Semester" },
-            { num: "98%", label: "Dues Collection Rate" },
+            { num: "All-in-one", label: "Budget, dues, events, and reports in one place" },
+            { num: "Treasurer-first", label: "Designed around how chapters actually manage money" },
+            { num: "Audit-ready", label: "Export semester reports for your national org in one click" },
           ].map(stat => (
-            <div key={stat.label} style={{ textAlign: "center" }}>
+            <div key={stat.label} style={{ textAlign: "center", maxWidth: "200px" }}>
               <div style={{
                 fontFamily: "Georgia, serif",
-                fontSize: "40px",
+                fontSize: "22px",
                 color: "#c9a84c",
                 lineHeight: "1",
+                marginBottom: "8px",
               }}>{stat.num}</div>
               <div style={{
                 fontSize: "12px",
                 color: "rgba(255,255,255,0.4)",
                 marginTop: "6px",
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
+                lineHeight: "1.6",
               }}>{stat.label}</div>
             </div>
           ))}
@@ -149,7 +152,7 @@ export default function Home() {
       </section>
 
       {/* FEATURES */}
-      <section style={{
+      <section id="features" style={{
         padding: "120px 60px",
         borderTop: "1px solid rgba(255,255,255,0.06)",
         background: "#0d1b2a",
@@ -190,31 +193,17 @@ export default function Home() {
             <div key={f.title} style={{
               background: "#162436",
               padding: "48px 40px",
-              transition: "background 0.3s",
             }}>
-              <div style={{
-                fontSize: "28px",
-                marginBottom: "24px",
-              }}>{f.icon}</div>
-              <h3 style={{
-                fontSize: "18px",
-                fontWeight: "500",
-                marginBottom: "12px",
-                color: "#ffffff",
-              }}>{f.title}</h3>
-              <p style={{
-                fontSize: "14px",
-                color: "rgba(255,255,255,0.45)",
-                lineHeight: "1.75",
-                margin: 0,
-              }}>{f.desc}</p>
+              <div style={{ fontSize: "28px", marginBottom: "24px" }}>{f.icon}</div>
+              <h3 style={{ fontSize: "18px", fontWeight: "500", marginBottom: "12px", color: "#ffffff" }}>{f.title}</h3>
+              <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.45)", lineHeight: "1.75", margin: 0 }}>{f.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* PRICING */}
-      <section style={{
+      <section id="pricing" style={{
         padding: "120px 60px",
         background: "#faf7f2",
         color: "#0d1b2a",
@@ -252,18 +241,24 @@ export default function Home() {
               desc: "Smaller or newer chapters getting off spreadsheets",
               features: ["Up to 50 members", "Budget tracking", "Transaction logging", "Receipt scanner", "Dues status tracking", "1 advisor seat"],
               featured: false,
+              cta: "Get Started Free",
+              href: "/signup",
             },
             {
               name: "Chapter", price: "$39", period: "/month", annual: "$390/year",
               desc: "Established chapters wanting the full experience",
               features: ["Unlimited members", "Event-level budgeting", "Treasurer handoff tools", "Automated due reminders", "Audit-ready export", "3 advisor seats"],
               featured: true,
+              cta: "Start Free Trial",
+              href: "/signup",
             },
             {
               name: "Council", price: "$99", period: "/month", annual: "$990/year",
               desc: "IFC / Panhellenic councils managing multiple chapters",
               features: ["Up to 10 chapters", "Cross-chapter reporting", "Council dashboards", "National HQ access", "Dedicated onboarding", "Unlimited seats"],
               featured: false,
+              cta: "Contact Sales",
+              href: "mailto:hello@getdrachma.com",
             },
           ].map(plan => (
             <div key={plan.name} style={{
@@ -337,7 +332,8 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <button style={{
+              <a href={plan.href} style={{
+                display: "block",
                 width: "100%",
                 padding: "14px",
                 borderRadius: "8px",
@@ -347,9 +343,10 @@ export default function Home() {
                 background: plan.featured ? "#c9a84c" : "transparent",
                 color: plan.featured ? "#0d1b2a" : "#0d1b2a",
                 border: plan.featured ? "none" : "1px solid #dce3eb",
-              }}>
-                {plan.featured ? "Start Free Trial" : plan.name === "Council" ? "Contact Sales" : "Get Started Free"}
-              </button>
+                textDecoration: "none",
+                textAlign: "center",
+                boxSizing: "border-box",
+              }}>{plan.cta}</a>
             </div>
           ))}
         </div>
@@ -364,7 +361,7 @@ export default function Home() {
         color: "rgba(255,255,255,0.4)",
         fontSize: "13px",
       }}>
-        © 2025 <span style={{ color: "#c9a84c" }}>Drachma</span> — Greek Life Finance Platform. Built for chapters that take their finances seriously.
+        © 2026 <span style={{ color: "#c9a84c" }}>Drachma</span> — Greek Life Finance Platform. Built for chapters that take their finances seriously.
       </footer>
 
     </main>
