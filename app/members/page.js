@@ -7,7 +7,13 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
 const COLORS = ['#4a90d9','#c9a84c','#2ecc8a','#a78bfa','#e05c5c','#f5a623','#8a97a8'];
-const SEMESTER = 'Spring 2026';
+function getCurrentSemester() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  return month >= 8 ? `Fall ${year}` : `Spring ${year}`;
+}
+const SEMESTER = getCurrentSemester();
 
 // ── HELPERS ───────────────────────────────────────────────────
 function initials(name) { return name.split(' ').map(n => n[0]).join(''); }
@@ -49,6 +55,14 @@ export default function MembersPage() {
   const [editDuesAmount, setEditDuesAmount] = useState('');
   const [drawerFineForm, setDrawerFineForm] = useState({ reason: '', amount: '' });
   const [drawerFinePreset, setDrawerFinePreset] = useState(null);
+  const [importModal, setImportModal]   = useState(false);
+  const [editMemberModal, setEditMemberModal] = useState(null);
+  const [editMemberForm, setEditMemberForm] = useState({ name: '', email: '', pledge_class: '' });
+  const [importStep, setImportStep]     = useState(1);
+  const [importRows, setImportRows]     = useState([]);
+  const [importHeaders, setImportHeaders] = useState([]);
+  const [importMapping, setImportMapping] = useState({ name: '', email: '', pledge: '', tier: '' });
+  const [importing, setImporting]       = useState(false);
 
   // ── FETCH DATA ─────────────────────────────────────────────
   useEffect(() => {
@@ -313,6 +327,27 @@ export default function MembersPage() {
     setSelectedIds(new Set());
   }
 
+  async function saveEditMember() {
+    if (!editMemberForm.name.trim()) return;
+    const { error } = await supabase.from('members').update({
+      name: editMemberForm.name.trim(),
+      email: editMemberForm.email.trim(),
+      pledge_class: editMemberForm.pledge_class.trim(),
+    }).eq('id', editMemberModal.id);
+
+    if (!error) {
+      setMembers(prev => prev.map(m => m.id === editMemberModal.id ? {
+        ...m,
+        name: editMemberForm.name.trim(),
+        email: editMemberForm.email.trim(),
+        pledge_class: editMemberForm.pledge_class.trim(),
+      } : m));
+      showToast(`${editMemberForm.name} updated`);
+      setEditMemberModal(null);
+      fetchData();
+    }
+  }
+
   async function saveEditDues() {
     const amount = parseFloat(editDuesAmount);
     if (!amount || amount <= 0) return;
@@ -338,6 +373,88 @@ export default function MembersPage() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  // ── CSV IMPORT ─────────────────────────────────────────────
+  function handleImportFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) return;
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+      const rows = lines.slice(1).map(line => {
+        const vals = line.split(',').map(v => v.replace(/"/g, '').trim());
+        const row = {};
+        headers.forEach((h, i) => row[h] = vals[i] || '');
+        return row;
+      });
+      setImportHeaders(headers);
+      setImportRows(rows);
+      // Auto-detect common column names
+      const autoMap = { name: '', email: '', pledge: '', tier: '' };
+      headers.forEach(h => {
+        const lower = h.toLowerCase();
+        if (!autoMap.name && (lower.includes('name') || lower.includes('full'))) autoMap.name = h;
+        if (!autoMap.email && lower.includes('email')) autoMap.email = h;
+        if (!autoMap.pledge && (lower.includes('pledge') || lower.includes('class'))) autoMap.pledge = h;
+        if (!autoMap.tier && (lower.includes('tier') || lower.includes('dues') || lower.includes('amount'))) autoMap.tier = h;
+      });
+      setImportMapping(autoMap);
+      setImportStep(2);
+    };
+    reader.readAsText(file);
+  }
+
+  async function confirmImport() {
+    if (!importMapping.name) return;
+    setImporting(true);
+    let successCount = 0;
+    const defaultTier = duesTiers.length > 0 ? duesTiers[0] : null;
+
+    for (const row of importRows) {
+      const name = row[importMapping.name]?.trim();
+      if (!name) continue;
+
+      // Check if member already exists
+      const exists = members.some(m => m.name.toLowerCase() === name.toLowerCase());
+      if (exists) continue;
+
+      const { data: newMember } = await supabase
+        .from('members')
+        .insert({
+          chapter_id: dbUser.chapter_id,
+          name,
+          email: importMapping.email ? row[importMapping.email]?.trim() || '' : '',
+          status: 'active',
+          pledge_class: importMapping.pledge ? row[importMapping.pledge]?.trim() || SEMESTER : SEMESTER,
+        })
+        .select()
+        .single();
+
+      if (newMember && defaultTier) {
+        await supabase.from('dues_payments').insert({
+          chapter_id: dbUser.chapter_id,
+          member_id: newMember.id,
+          tier_id: defaultTier.id,
+          semester: SEMESTER,
+          amount_owed: defaultTier.amount,
+          amount_paid: 0,
+          status: 'outstanding',
+        });
+      }
+      successCount++;
+    }
+
+    setImporting(false);
+    setImportModal(false);
+    setImportStep(1);
+    setImportRows([]);
+    setImportHeaders([]);
+    showToast(`${successCount} members imported successfully`);
+    fetchData();
   }
 
   // ── EXPORT CSV ─────────────────────────────────────────────
@@ -423,12 +540,12 @@ export default function MembersPage() {
             <div className="topbar-sub">
               {activeTab === 'dues'
                 ? `${SEMESTER} · ${activeMembers.length} active members · ${fmt(DUES_AMOUNT)} dues per member`
-                : `Spring 2025 · ${fmt(finesOutstanding)} outstanding · ${fines.filter(f => !f.paid).length} open fines`}
+                : `${SEMESTER} · ${fmt(finesOutstanding)} outstanding · ${fines.filter(f => !f.paid).length} open fines`}
             </div>
           </div>
           <div className="topbar-right">
             <button className="btn-outline" onClick={exportCSV}>Export CSV</button>
-            <button className="btn-outline" onClick={() => showToast('CSV import coming soon — export your roster and we will map it automatically')}>Import from CSV</button>
+            <button className="btn-outline" onClick={() => { setImportModal(true); setImportStep(1); }}>Import from CSV</button>
             {activeTab === 'dues' && (
               <button className="btn" onClick={() => setAddMemberModal(true)}>+ Add Member</button>
             )}
@@ -477,7 +594,7 @@ export default function MembersPage() {
                   <div className="card-header">
                     <div>
                       <div className="card-title">Member Roster</div>
-                      <div className="card-sub">{members.length} members · Spring 2025</div>
+                      <div className="card-sub">{members.length} members · `${SEMESTER}`</div>
                     </div>
                     <div className="header-controls">
                       <input className="search-input" placeholder="Search members..." value={search} onChange={e => setSearch(e.target.value)} />
@@ -684,7 +801,7 @@ export default function MembersPage() {
                 <div className="stat-card blue">
                   <div className="stat-label">Total Issued</div>
                   <div className="stat-value">{fmt(finesTotal)}</div>
-                  <div className="stat-sub">Spring 2025</div>
+                  <div className="stat-sub">`${SEMESTER}`</div>
                 </div>
                 <div className="stat-card gold">
                   <div className="stat-label">Members Fined</div>
@@ -696,7 +813,7 @@ export default function MembersPage() {
               <div className="main-grid fines-grid">
                 <div className="card">
                   <div className="card-header">
-                    <div><div className="card-title">Active Fines</div><div className="card-sub">{fines.filter(f => !f.paid).length} unpaid · Spring 2025</div></div>
+                    <div><div className="card-title">Active Fines</div><div className="card-sub">{fines.filter(f => !f.paid).length} unpaid · `${SEMESTER}`</div></div>
                     <div className="header-controls">
                       <input className="search-input" placeholder="Search members..." value={search} onChange={e => setSearch(e.target.value)} />
                       <div className="filter-tabs">
@@ -843,11 +960,25 @@ export default function MembersPage() {
                         </div>
                       </div>
                     </div>
-                    <button className="drawer-close" onClick={() => setDrawer(null)}>✕</button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="drawer-close"
+                        onClick={() => {
+                          setEditMemberModal({ id: drawerMember.id });
+                          setEditMemberForm({
+                            name: drawerMember.name,
+                            email: drawerMember.email || '',
+                            pledge_class: drawerMember.pledge_class || '',
+                          });
+                        }}
+                        title="Edit member"
+                      >✎</button>
+                      <button className="drawer-close" onClick={() => setDrawer(null)}>✕</button>
+                    </div>
                   </div>
                   <div className="drawer-body">
                     <div className="drawer-section">
-                      <div className="drawer-section-title">Dues — Spring 2025</div>
+                      <div className="drawer-section-title">Dues — `${SEMESTER}`</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <StatusPill status={getMemberDuesStatus(drawerMember.id)} />
@@ -870,7 +1001,7 @@ export default function MembersPage() {
                       </div>
                     </div>
                     <div className="drawer-section">
-                      <div className="drawer-section-title" style={{ marginBottom: 12 }}>Fines — Spring 2025</div>
+                      <div className="drawer-section-title" style={{ marginBottom: 12 }}>Fines — `${SEMESTER}`</div>
                       <div className="drawer-fine-stats">
                         {[['Fines', memberFines.length],['Issued', fmt(totalIssued)],['Paid', fmt(totalPaid)],['Owed', totalOwed > 0 ? fmt(totalOwed) : '—']].map(([lbl, val]) => (
                           <div key={lbl} className="drawer-fine-stat">
@@ -888,7 +1019,7 @@ export default function MembersPage() {
                           <div key={i} className="drawer-fine-row">
                             <div style={{ flex: 1 }}>
                               <div className="drawer-fine-reason">{f.reason}</div>
-                              <div className="drawer-fine-date">{f.date} · Spring 2025</div>
+                              <div className="drawer-fine-date">{f.date} · `${SEMESTER}`</div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
                               <div className={`drawer-fine-amt ${f.paid ? 'paid-amt' : 'owed'}`}>{fmt(f.amt)}</div>
@@ -979,6 +1110,106 @@ export default function MembersPage() {
         </>
       )}
 
+      {/* CSV IMPORT MODAL */}
+      {importModal && (
+        <div className="modal-overlay" onClick={() => setImportModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 500 }}>
+
+            {/* Step 1 — Upload */}
+            {importStep === 1 && (
+              <>
+                <div className="modal-title">Import Members from CSV</div>
+                <div className="modal-sub">Upload a CSV export from GreekBill, OmegaFi, or any spreadsheet</div>
+                <label style={{
+                  display: 'block', border: '2px dashed #dce3eb', borderRadius: 10,
+                  padding: 28, textAlign: 'center', cursor: 'pointer', background: '#f8f9fb',
+                  marginBottom: 20,
+                }}>
+                  <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleImportFile} />
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 4 }}>Click to upload CSV file</div>
+                  <div style={{ fontSize: 11, color: '#8a97a8' }}>Export your roster from GreekBill or OmegaFi, then upload it here</div>
+                </label>
+                <div className="modal-footer">
+                  <button className="btn-outline" onClick={() => setImportModal(false)}>Cancel</button>
+                </div>
+              </>
+            )}
+
+            {/* Step 2 — Map Columns */}
+            {importStep === 2 && (
+              <>
+                <div className="modal-title">Map Your Columns</div>
+                <div className="modal-sub">{importRows.length} members found — match your columns to Drachma fields</div>
+                <div className="modal-fields">
+                  {[
+                    { label: 'Full Name *', key: 'name', required: true },
+                    { label: 'Email', key: 'email', required: false },
+                    { label: 'Pledge Class', key: 'pledge', required: false },
+                  ].map(field => (
+                    <div className="modal-field" key={field.key}>
+                      <div className="field-label">{field.label}</div>
+                      <select
+                        className="modal-input"
+                        value={importMapping[field.key]}
+                        onChange={e => setImportMapping(m => ({ ...m, [field.key]: e.target.value }))}
+                      >
+                        <option value="">— Skip this field —</option>
+                        {importHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                {/* Preview */}
+                <div style={{ marginBottom: 16 }}>
+                  <div className="field-label" style={{ marginBottom: 8 }}>Preview (first 3 rows)</div>
+                  <div style={{ border: '1px solid #dce3eb', borderRadius: 8, overflow: 'hidden' }}>
+                    {importRows.slice(0, 3).map((row, i) => (
+                      <div key={i} style={{ padding: '8px 12px', borderBottom: i < 2 ? '1px solid #f3f5f8' : 'none', fontSize: 12, color: '#0d1b2a' }}>
+                        <strong>{importMapping.name ? row[importMapping.name] : '—'}</strong>
+                        {importMapping.email && row[importMapping.email] && ` · ${row[importMapping.email]}`}
+                        {importMapping.pledge && row[importMapping.pledge] && ` · ${row[importMapping.pledge]}`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button className="btn-outline" onClick={() => setImportStep(1)}>Back</button>
+                  <button className="btn" onClick={() => setImportStep(3)} disabled={!importMapping.name}>
+                    Preview Import →
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Step 3 — Confirm */}
+            {importStep === 3 && (
+              <>
+                <div className="modal-title">Ready to Import</div>
+                <div className="modal-sub">{importRows.filter(r => r[importMapping.name]?.trim()).length} members will be added to your roster</div>
+                <div style={{ padding: '12px 16px', background: '#fdf8ee', borderRadius: 8, border: '1px solid rgba(201,168,76,0.3)', fontSize: 12, color: '#8b6914', marginBottom: 16 }}>
+                  ⚠ Duplicate members (same name) will be skipped automatically. All imported members will be assigned to your first dues tier.
+                </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #dce3eb', borderRadius: 8, marginBottom: 16 }}>
+                  {importRows.filter(r => r[importMapping.name]?.trim()).map((row, i) => (
+                    <div key={i} style={{ padding: '8px 12px', borderBottom: '1px solid #f3f5f8', fontSize: 12, color: '#0d1b2a', display: 'flex', gap: 8 }}>
+                      <span style={{ fontWeight: 500 }}>{row[importMapping.name]}</span>
+                      {importMapping.email && <span style={{ color: '#8a97a8' }}>{row[importMapping.email]}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="modal-footer">
+                  <button className="btn-outline" onClick={() => setImportStep(2)}>Back</button>
+                  <button className="btn" onClick={confirmImport} disabled={importing}>
+                    {importing ? 'Importing...' : `Import ${importRows.filter(r => r[importMapping.name]?.trim()).length} Members`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ADD MEMBER MODAL */}
       {addMemberModal && (
         <div className="modal-overlay" onClick={() => setAddMemberModal(false)}>
@@ -1022,6 +1253,47 @@ export default function MembersPage() {
             <div className="modal-footer">
               <button className="btn-outline" onClick={() => setAddMemberModal(false)}>Cancel</button>
               <button className="btn" onClick={addMember}>Add Member</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MEMBER MODAL */}
+      {editMemberModal && (
+        <div className="modal-overlay" onClick={() => setEditMemberModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Edit Member</div>
+            <div className="modal-sub">Update member details</div>
+            <div className="modal-fields">
+              <div className="modal-field">
+                <div className="field-label">Full Name</div>
+                <input
+                  className="modal-input"
+                  value={editMemberForm.name}
+                  onChange={e => setEditMemberForm(f => ({ ...f, name: e.target.value }))}
+                  autoFocus
+                />
+              </div>
+              <div className="modal-field">
+                <div className="field-label">Email</div>
+                <input
+                  className="modal-input"
+                  value={editMemberForm.email}
+                  onChange={e => setEditMemberForm(f => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="modal-field">
+                <div className="field-label">Pledge Class</div>
+                <input
+                  className="modal-input"
+                  value={editMemberForm.pledge_class}
+                  onChange={e => setEditMemberForm(f => ({ ...f, pledge_class: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setEditMemberModal(null)}>Cancel</button>
+              <button className="btn" onClick={saveEditMember}>Save Changes</button>
             </div>
           </div>
         </div>
