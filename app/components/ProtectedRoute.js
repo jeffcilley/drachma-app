@@ -2,15 +2,20 @@
 
 import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && !user) {
-      window.location.href = '/login';
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        window.location.href = '/login';
+      }
     }
-  }, [user, loading]);
+    checkAuth();
+  }, []);
 
   if (loading) {
     return (

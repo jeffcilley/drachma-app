@@ -56,13 +56,34 @@ function UploadModal({ onClose, onSave }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [cat, setCat] = useState('');
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(false);
+  const fileInputRef = useRef(null);
 
-  function handleSave() {
+  function handleFileChange(e) {
+    const f = e.target.files[0];
+    if (f) {
+      setFile(f);
+      if (!name.trim()) setName(f.name.replace(/\.[^/.]+$/, ''));
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f) {
+      setFile(f);
+      if (!name.trim()) setName(f.name.replace(/\.[^/.]+$/, ''));
+    }
+  }
+
+  async function handleSave() {
     if (!name.trim() || !cat) { setError(true); return; }
     setError(false);
-    onSave({ name: name.trim(), desc: desc.trim(), cat, date: new Date().toISOString().split('T')[0], size: '—' });
-    onClose();
+    setUploading(true);
+    const size = file ? (file.size > 1024 * 1024 ? (file.size / 1024 / 1024).toFixed(1) + ' MB' : Math.round(file.size / 1024) + ' KB') : '—';
+    onSave({ name: name.trim(), desc: desc.trim(), cat, size, file });
   }
 
   return (
@@ -79,13 +100,21 @@ function UploadModal({ onClose, onSave }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Upload Zone */}
           <div
-            style={{ border: '2px dashed #dce3eb', borderRadius: 10, padding: '20px', textAlign: 'center', background: '#f8f9fb', cursor: 'pointer' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = '#c9a84c'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = '#dce3eb'}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={handleDrop}
+            style={{ border: `2px dashed ${file ? '#2ecc8a' : '#dce3eb'}`, borderRadius: 10, padding: '20px', textAlign: 'center', background: file ? '#e8f5ee' : '#f8f9fb', cursor: 'pointer' }}
+            onMouseEnter={e => { if (!file) e.currentTarget.style.borderColor = '#c9a84c'; }}
+            onMouseLeave={e => { if (!file) e.currentTarget.style.borderColor = '#dce3eb'; }}
           >
-            <div style={{ fontSize: 24, marginBottom: 6 }}>📎</div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#0d1b2a', marginBottom: 4 }}>Click to browse or drag file here</div>
-            <div style={{ fontSize: 11, color: '#8a97a8' }}>PDF, DOCX, XLSX, JPG, PNG supported</div>
+            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileChange} accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" />
+            <div style={{ fontSize: 24, marginBottom: 6 }}>{file ? '✅' : '📎'}</div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#0d1b2a', marginBottom: 4 }}>
+              {file ? file.name : 'Click to browse or drag file here'}
+            </div>
+            <div style={{ fontSize: 11, color: '#8a97a8' }}>
+              {file ? `${(file.size / 1024).toFixed(0)} KB · Click to change` : 'PDF, DOCX, XLSX, JPG, PNG supported'}
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -120,7 +149,9 @@ function UploadModal({ onClose, onSave }) {
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 16, borderTop: '1px solid #eef0f4' }}>
             <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #dce3eb', background: '#ffffff', color: '#0d1b2a', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={handleSave} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Upload Document</button>
+            <button onClick={handleSave} disabled={uploading} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: uploading ? '#8a97a8' : '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: uploading ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+              {uploading ? 'Uploading...' : 'Upload Document'}
+            </button>
           </div>
         </div>
       </div>
@@ -276,6 +307,7 @@ export default function DocumentsPage() {
         cat: d.category,
         date: d.created_at.split('T')[0],
         size: d.file_size || '—',
+        file_url: d.file_url || null,
       })));
     }
 
@@ -335,6 +367,29 @@ export default function DocumentsPage() {
   }
 
   async function handleUpload(data) {
+    let fileUrl = null;
+
+    // Upload file to Supabase Storage if a file was selected
+    if (data.file) {
+      const fileExt = data.file.name.split('.').pop();
+      const safeName = data.name.trim().replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const filePath = `${dbUser.chapter_id}/${safeName}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, data.file);
+
+      if (uploadError) {
+        showToast('Upload failed — please try again');
+        return;
+      }
+
+      const { data: urlData } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+
+      fileUrl = urlData?.signedUrl || null;
+    }
+
     const { data: newDoc, error } = await supabase
       .from('documents')
       .insert({
@@ -342,7 +397,8 @@ export default function DocumentsPage() {
         name: data.name,
         description: data.desc,
         category: data.cat,
-        file_size: '—',
+        file_size: data.size,
+        file_url: fileUrl,
       })
       .select()
       .single();
@@ -354,9 +410,11 @@ export default function DocumentsPage() {
         desc: newDoc.description || '',
         cat: newDoc.category,
         date: newDoc.created_at.split('T')[0],
-        size: '—',
+        size: data.size,
+        file_url: fileUrl,
       }, ...prev]);
       showToast('Document uploaded successfully');
+      setShowUploadModal(false);
     }
   }
 
@@ -568,7 +626,16 @@ export default function DocumentsPage() {
                                   <div style={{ fontSize: 10, color: '#c0c8d0', marginTop: 2 }}>Added {formatDate(doc.date)} · {doc.size}</div>
                                 </div>
                                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                                  <button onClick={() => showToast('Downloading...')} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #dce3eb', background: '#ffffff', fontSize: 11, fontWeight: 600, color: '#0d1b2a', cursor: 'pointer', fontFamily: 'inherit' }}>⬇ Download</button>
+                                  <button onClick={async () => {
+                                    if (doc.file_url) {
+                                      const a = document.createElement('a');
+                                      a.href = doc.file_url;
+                                      a.download = doc.name;
+                                      a.click();
+                                    } else {
+                                      showToast('No file attached to this document');
+                                    }
+                                  }} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #dce3eb', background: '#ffffff', fontSize: 11, fontWeight: 600, color: '#0d1b2a', cursor: 'pointer', fontFamily: 'inherit' }}>⬇ Download</button>
                                   <button onClick={() => setShowDeleteConfirm(doc.id)} style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #eef0f4', background: '#ffffff', cursor: 'pointer', fontSize: 12, color: '#e05c5c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                                 </div>
                               </div>

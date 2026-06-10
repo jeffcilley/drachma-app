@@ -18,6 +18,9 @@ export function AuthProvider({ children }) {
         fetchUserData(session.user.id);
       } else {
         setLoading(false);
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login') && !window.location.pathname.includes('/signup') && window.location.pathname !== '/') {
+          window.location.href = '/login';
+        }
       }
     });
 
