@@ -50,19 +50,21 @@ export default function AdvisorPortalPage() {
       {/* TOP BANNER */}
       <div style={{ background: '#0d1b2a', padding: '0 28px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 400, color: '#ffffff', letterSpacing: '0.05em' }}>
+          <a href="/dashboard" style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 400, color: '#ffffff', letterSpacing: '0.05em', textDecoration: 'none' }}>
             Drach<span style={{ color: '#c9a84c' }}>m</span>a
-          </div>
+          </a>
           <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.15)' }} />
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-            PKA — Zeta Mu · University of Idaho · Spring 2026
+            Advisor Portal · Spring 2026
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Last updated: Apr 1, 2026 at 2:34 PM</div>
           <div style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 100, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            👁 Read-only view
+            👁 Read-only view — Coming Soon
           </div>
+          <a href="/dashboard" style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 7, background: 'rgba(255,255,255,0.1)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.15)', textDecoration: 'none' }}>
+            ← Back to Dashboard
+          </a>
         </div>
       </div>
 
