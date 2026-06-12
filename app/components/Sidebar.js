@@ -1,5 +1,7 @@
 'use client';
 
+import { useAuth } from '../context/AuthContext';
+
 const navSections = [
   {
     label: 'Overview',
@@ -29,6 +31,16 @@ const navSections = [
 ];
 
 export default function Sidebar({ activePage }) {
+  const { dbUser, chapter } = useAuth();
+
+  const chapterName = chapter?.name || 'Chapter';
+  const university = chapter?.university || '';
+  const greekLetters = chapter?.greek_letters || '';
+  const userName = dbUser?.name || '';
+  const userRole = dbUser?.role || 'Member';
+  const userInitials = userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const planLabel = chapter?.plan === 'starter' ? 'Starter Plan' : chapter?.plan === 'council' ? 'Council Plan' : 'Chapter Plan';
+
   return (
     <aside style={{
       width: 240,
@@ -58,8 +70,11 @@ export default function Sidebar({ activePage }) {
         padding: '14px 24px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>PKA — Zeta Mu</div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>University of Idaho</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>{chapterName}</div>
+          {greekLetters && <div style={{ fontSize: 11, color: '#c9a84c', fontWeight: 600 }}>{greekLetters}</div>}
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{university}</div>
       </div>
 
       {/* NAV */}
@@ -122,10 +137,10 @@ export default function Sidebar({ activePage }) {
             background: 'linear-gradient(135deg, #c9a84c, #8b6914)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 12, fontWeight: 700, color: '#0d1b2a', flexShrink: 0,
-          }}>MJ</div>
+          }}>{userInitials}</div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: '#ffffff' }}>Marcus Johnson</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>Treasurer · Chapter Plan</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#ffffff' }}>{userName}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{userRole} · {planLabel}</div>
           </div>
         </div>
       </div>

@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
+import ProtectedRoute from '../components/ProtectedRoute';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 const inputStyle = {
   padding: '8px 12px', borderRadius: 8, border: '1px solid #dce3eb',
@@ -55,11 +58,15 @@ function Toggle({ value, onChange }) {
 }
 
 export default function SettingsPage() {
-  const [chapterName, setChapterName] = useState('PKA — Zeta Mu');
-  const [university, setUniversity] = useState('University of Idaho');
-  const [greekLetters, setGreekLetters] = useState('ΠΚΑ');
-  const [foundingYear, setFoundingYear] = useState('1987');
+  const { dbUser } = useAuth();
+  const [chapterName, setChapterName] = useState('');
+  const [university, setUniversity] = useState('');
+  const [greekLetters, setGreekLetters] = useState('');
+  const [foundingYear, setFoundingYear] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#c9a84c');
+  const [plan, setPlan] = useState('chapter');
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState({
     overdueDues: true,
     budgetWarnings: true,
@@ -70,18 +77,80 @@ export default function SettingsPage() {
   const [toast, setToast] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const users = [
-    { name: 'Marcus Johnson', role: 'Treasurer', email: 'marcus@uidaho.edu', avatar: 'MJ' },
-    { name: 'Tyler Brooks', role: 'President', email: 'tyler@uidaho.edu', avatar: 'TB' },
-    { name: 'Dr. James Wilson', role: 'Advisor', email: 'jwilson@uidaho.edu', avatar: 'JW' },
-  ];
+  useEffect(() => {
+    if (!dbUser?.chapter_id) return;
+    fetchData();
+  }, [dbUser]);
+
+  async function fetchData() {
+    setLoading(true);
+    const [chapterRes, usersRes] = await Promise.all([
+      supabase.from('chapters').select('*').eq('id', dbUser.chapter_id).single(),
+      supabase.from('users').select('*').eq('chapter_id', dbUser.chapter_id),
+    ]);
+
+    if (chapterRes.data) {
+      const c = chapterRes.data;
+      setChapterName(c.name || '');
+      setUniversity(c.university || '');
+      setGreekLetters(c.greek_letters || '');
+      setFoundingYear(c.founding_year ? String(c.founding_year) : '');
+      setPrimaryColor(c.primary_color || '#c9a84c');
+      setPlan(c.plan || 'starter');
+    }
+
+    if (usersRes.data) {
+      setUsers(usersRes.data.map(u => ({
+        name: u.name,
+        role: u.role || 'Member',
+        email: u.email,
+        avatar: u.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+      })));
+    }
+
+    setLoading(false);
+  }
+
+  async function saveChapterInfo() {
+    const { error, data } = await supabase.from('chapters').update({
+      name: chapterName,
+      university,
+      greek_letters: greekLetters,
+      founding_year: foundingYear ? parseInt(foundingYear) : null,
+    }).eq('id', dbUser.chapter_id).select();
+    
+    if (!error) {
+      showToast('✓ Chapter info saved!');
+      setTimeout(() => window.location.reload(), 1500);
+    } else showToast('Error saving — please try again');
+  }
+
+  async function saveBranding() {
+    const { error } = await supabase.from('chapters').update({
+      primary_color: primaryColor,
+    }).eq('id', dbUser.chapter_id);
+    if (!error) {
+      showToast('✓ Branding saved!');
+      setTimeout(() => window.location.reload(), 1500);
+    } else showToast('Error saving — please try again');
+  }
 
   function showToast(msg) {
     setToast(msg);
     setTimeout(() => setToast(''), 3000);
   }
 
+  if (loading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 32, color: '#0d1b2a', marginBottom: 12 }}>Drach<span style={{ color: '#c9a84c' }}>m</span>a</div>
+        <div style={{ fontSize: 13, color: '#8a97a8' }}>Loading settings...</div>
+      </div>
+    </div>
+  );
+
   return (
+    <ProtectedRoute>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f5f7fa', fontFamily: "'DM Sans', sans-serif" }}>
       <Sidebar activePage="settings" />
 
@@ -114,7 +183,7 @@ export default function SettingsPage() {
                 <input style={{ ...inputStyle, width: 120 }} value={foundingYear} onChange={e => setFoundingYear(e.target.value)} />
               </FieldRow>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                <button onClick={() => showToast('✓ Chapter info saved!')} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={saveChapterInfo} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Save Changes
                 </button>
               </div>
@@ -140,7 +209,7 @@ export default function SettingsPage() {
                 </div>
               </FieldRow>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                <button onClick={() => showToast('✓ Branding saved!')} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={saveBranding} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#0d1b2a', color: '#ffffff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Save Changes
                 </button>
               </div>
@@ -150,8 +219,10 @@ export default function SettingsPage() {
             <Section title="Billing & Subscription" subtitle="Manage your Drachma subscription">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: '#f8f9fb', borderRadius: 10, marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 2 }}>Chapter Plan — $39/month</div>
-                  <div style={{ fontSize: 11, color: '#8a97a8' }}>Next billing date: May 1, 2026 · Unlimited members</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0d1b2a', marginBottom: 2 }}>
+                    {plan === 'starter' ? 'Starter Plan — $19/month' : plan === 'council' ? 'Council Plan — $99/month' : 'Chapter Plan — $39/month'}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8a97a8' }}>Manage your subscription via the billing portal</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => showToast('Redirecting to billing portal...')} style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid #dce3eb', background: '#ffffff', color: '#0d1b2a', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -164,9 +235,9 @@ export default function SettingsPage() {
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 {[
-                  { name: 'Starter', price: '$19/mo', current: false },
-                  { name: 'Chapter', price: '$39/mo', current: true },
-                  { name: 'Council', price: '$99/mo', current: false },
+                  { name: 'Starter', price: '$19/mo', current: plan === 'starter' },
+                  { name: 'Chapter', price: '$39/mo', current: plan === 'chapter' },
+                  { name: 'Council', price: '$99/mo', current: plan === 'council' },
                 ].map(plan => (
                   <div key={plan.name} style={{
                     flex: 1, padding: '12px 14px', borderRadius: 10,
@@ -277,5 +348,6 @@ export default function SettingsPage() {
       )}
 
     </div>
+    </ProtectedRoute>
   );
 }
