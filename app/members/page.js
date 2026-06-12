@@ -670,34 +670,8 @@ export default function MembersPage() {
                               <>
                                 <button className="ab ab-paid" onClick={() => markDuesPaid(m.id)}>✓ Mark Paid</button>
                                 <button className="ab ab-partial" onClick={() => { setLpModal({ id: m.id, name: m.name }); setLpAmount(''); }}>Log Payment</button>
-                                {duesStatus === 'outstanding' && (
-                                  <button className="ab" style={{ borderColor: 'rgba(224,92,92,0.4)', color: '#c03c3c', background: '#fde8e8' }}
-                                    onClick={async () => {
-                                      const duesRecord = getMemberDues(m.id);
-                                      if (duesRecord) {
-                                        await supabase.from('dues_payments').update({ status: 'overdue' }).eq('id', duesRecord.id);
-                                        setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, status: 'overdue' } : d));
-                                        showToast(`${m.name} marked overdue`);
-                                      }
-                                    }}
-                                  >Mark Overdue</button>
-                                )}
-                                {duesStatus === 'overdue' && (
-                                  <button className="ab" style={{ borderColor: 'rgba(201,168,76,0.4)', color: '#8b6914', background: '#fdf8ee' }}
-                                    onClick={async () => {
-                                      const duesRecord = getMemberDues(m.id);
-                                      if (duesRecord) {
-                                        await supabase.from('dues_payments').update({ status: 'outstanding' }).eq('id', duesRecord.id);
-                                        setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, status: 'outstanding' } : d));
-                                        showToast(`${m.name} moved back to outstanding`);
-                                      }
-                                    }}
-                                  >Undo Overdue</button>
-                                )}
-                                {/* Remind button — enabled when SendGrid is wired up */}
                               </>
                             )}
-                            <button className="ab" onClick={() => { setEditDuesModal({ id: m.id, name: m.name }); setEditDuesAmount(String(getMemberDuesOwed(m.id))); }}>Edit Dues</button>
                             <button className="ab" onClick={() => setDrawer(m.id)}>View</button>
                           </div>
                         </div>
@@ -1078,7 +1052,7 @@ export default function MembersPage() {
                       </div>
                     </div>
                   )}
-                  <div className="drawer-footer">
+                  <div className="drawer-footer" style={{ flexWrap: 'wrap', gap: 6 }}>
                     <button
                       className="drawer-btn"
                       style={drawerMember.status === 'dropped'
@@ -1099,9 +1073,43 @@ export default function MembersPage() {
                           fetchData();
                         }
                       }}
-                    >{drawerMember.status === 'dropped' ? 'Reinstate Member' : 'Mark as Dropped'}</button>
-                    <button className="drawer-btn fine-btn" onClick={() => setDrawerFineForm(f => ({ ...f, open: !f.open }))}>+ Issue Fine</button>
-                    <button className="drawer-btn primary">Send Reminder</button>
+                    >{drawerMember.status === 'dropped' ? 'Reinstate' : 'Drop'}</button>
+                    <button className="drawer-btn fine-btn" onClick={() => setDrawerFineForm(f => ({ ...f, open: !f.open }))}>+ Fine</button>
+                    <button
+                      className="drawer-btn"
+                      style={{ background: '#f0f3f7', color: '#0d1b2a', border: '1px solid #dce3eb' }}
+                      onClick={() => { setEditDuesModal({ id: drawerMember.id, name: drawerMember.name }); setEditDuesAmount(String(getMemberDuesOwed(drawerMember.id))); setDrawer(null); }}
+                    >Edit Dues</button>
+                    {getMemberDuesStatus(drawerMember.id) === 'outstanding' && (
+                      <button
+                        className="drawer-btn"
+                        style={{ background: '#fde8e8', color: '#c03c3c', border: '1px solid rgba(224,92,92,0.3)' }}
+                        onClick={async () => {
+                          const duesRecord = getMemberDues(drawerMember.id);
+                          if (duesRecord) {
+                            await supabase.from('dues_payments').update({ status: 'overdue' }).eq('id', duesRecord.id);
+                            setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, status: 'overdue' } : d));
+                            setDrawer(null);
+                            showToast(`${drawerMember.name} marked overdue`);
+                          }
+                        }}
+                      >Mark Overdue</button>
+                    )}
+                    {getMemberDuesStatus(drawerMember.id) === 'overdue' && (
+                      <button
+                        className="drawer-btn"
+                        style={{ background: '#fdf8ee', color: '#8b6914', border: '1px solid rgba(201,168,76,0.4)' }}
+                        onClick={async () => {
+                          const duesRecord = getMemberDues(drawerMember.id);
+                          if (duesRecord) {
+                            await supabase.from('dues_payments').update({ status: 'outstanding' }).eq('id', duesRecord.id);
+                            setDues(prev => prev.map(d => d.id === duesRecord.id ? { ...d, status: 'outstanding' } : d));
+                            setDrawer(null);
+                            showToast(`${drawerMember.name} moved back to outstanding`);
+                          }
+                        }}
+                      >Undo Overdue</button>
+                    )}
                   </div>
                 </>
               );

@@ -799,7 +799,7 @@ export default function TransactionsPage() {
             )}
 
             {/* COLUMN HEADERS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '36px 80px 1fr 150px 100px 110px 120px', padding: '8px 20px', background: '#f8f9fb', borderBottom: '1px solid #eef0f4', flexShrink: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '36px 70px 1fr 130px 90px 100px 100px', padding: '8px 20px', background: '#f8f9fb', borderBottom: '1px solid #eef0f4', flexShrink: 0 }}>
               <div><input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#0d1b2a' }} /></div>
               {[['date', 'Date'], ['desc', 'Description'], ['cat', 'Category'], ['amount', 'Amount'], [null, 'Balance After'], [null, 'Actions']].map(([col, label], i) => (
                 <div
@@ -827,7 +827,7 @@ export default function TransactionsPage() {
                   <div
                     key={tx.id}
                     style={{
-                      display: 'grid', gridTemplateColumns: '36px 80px 1fr 150px 100px 110px 120px',
+                      display: 'grid', gridTemplateColumns: '36px 70px 1fr 130px 90px 100px 100px',
                       padding: '12px 20px', alignItems: 'center',
                       borderBottom: '1px solid #f3f5f8',
                       background: isSelected ? '#eaf2fb' : 'transparent',
@@ -899,7 +899,7 @@ export default function TransactionsPage() {
           </div>
 
           {/* RIGHT SIDEBAR */}
-          <div style={{ width: 320, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flexShrink: 0 }}>
+          <div style={{ width: 280, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flexShrink: 0 }}>
 
             {/* BUDGET IMPACT */}
             <SideCard title="Budget Impact">
